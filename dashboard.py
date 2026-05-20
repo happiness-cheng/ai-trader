@@ -287,9 +287,16 @@ async def api_charts():
 
 @app.get("/api/charts/{filename}")
 async def api_chart_image(filename: str):
-    """获取单张图表"""
+    """获取单张图表（防路径遍历）"""
     from fastapi.responses import FileResponse
-    chart_path = os.path.join(config.LOG_DIR, 'charts', filename)
+    from fastapi import HTTPException
+    # 禁止路径遍历：只允许纯文件名
+    if '/' in filename or '\\' in filename or '..' in filename:
+        raise HTTPException(status_code=400, detail="非法文件名")
+    chart_path = os.path.abspath(os.path.join(config.LOG_DIR, 'charts', filename))
+    charts_dir = os.path.abspath(os.path.join(config.LOG_DIR, 'charts'))
+    if not chart_path.startswith(charts_dir):
+        raise HTTPException(status_code=400, detail="非法路径")
     if os.path.exists(chart_path):
         return FileResponse(chart_path, media_type='image/png')
     return {"error": "图表不存在"}

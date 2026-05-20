@@ -86,10 +86,11 @@ def get_stock_history(symbol, period="daily", days=120):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            # 尝试用eval解析（新浪有时返回Python字典格式）
+            # 新浪有时返回Python字典格式，用ast.literal_eval安全解析
+            import ast
             try:
-                data = eval(text) if text.startswith('[') else []
-            except:
+                data = ast.literal_eval(text) if text.startswith('[') else []
+            except (ValueError, SyntaxError):
                 logger.error(f"无法解析新浪数据: {text[:200]}")
                 return pd.DataFrame()
 

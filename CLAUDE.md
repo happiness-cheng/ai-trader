@@ -58,7 +58,7 @@ D:/Users/陈独秀/AppData/Local/Programs/Python/Python314/python.exe
 600519(贵州茅台), 300750(宁德时代), 601318(中国平安), 000858(五粮液), 000001(平安银行)
 
 ## 飞书推送
-- webhook: https://open.feishu.cn/open-apis/bot/v2/hook/afa08bee-2fcc-4792-b479-97281b697ea5
+- webhook: 从环境变量 `FEISHU_WEBHOOK` 读取，参见 `env.example`
 - 代码: notifier.py 的 send(title, content)
 
 ## 同花顺 UI 映射（v9.50.90）

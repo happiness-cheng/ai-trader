@@ -1,0 +1,7 @@
+pywinauto
+akshare
+requests
+ta
+fastapi
+uvicorn
+pandas

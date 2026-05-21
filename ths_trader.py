@@ -65,30 +65,57 @@ class THSTrader:
         return False
 
     def _set_edit(self, automation_id, value):
-        """设置输入框的值"""
+        """设置输入框的值（用剪贴板粘贴，避免旧值残留）"""
         self._ensure_connected()
+        import win32clipboard
         for child in self.trade_win.descendants():
             aid = child.element_info.automation_id or ""
             if aid == automation_id and child.element_info.control_type == "Edit":
                 child.set_focus()
-                child.set_text("")
-                time.sleep(0.2)
-                child.set_text(str(value))
                 time.sleep(0.3)
+                # Ctrl+A 全选 → Delete 清空
+                child.type_keys('^a')
+                time.sleep(0.1)
+                child.type_keys('{DELETE}')
+                time.sleep(0.1)
+                # 用剪贴板粘贴（比 type_keys 更可靠）
+                win32clipboard.OpenClipboard()
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardText(str(value))
+                win32clipboard.CloseClipboard()
+                child.type_keys('^v')
+                time.sleep(0.5)
                 logger.info(f"设置输入框 {automation_id} = {value}")
                 return True
         logger.warning(f"未找到输入框: {automation_id}")
         return False
 
     def _click_button(self, automation_id):
-        """点击按钮"""
+        """点击按钮（用物理鼠标点击，UIA点击对自定义控件无效）"""
         self._ensure_connected()
+        import ctypes
+        user32 = ctypes.windll.user32
+
         for child in self.trade_win.descendants():
             aid = child.element_info.automation_id or ""
             if aid == automation_id and child.element_info.control_type == "Button":
-                child.click_input()
+                rect = child.element_info.rectangle
+                cx = (rect.left + rect.right) // 2
+                cy = (rect.top + rect.bottom) // 2
+
+                # 激活窗口
+                hwnd = user32.FindWindowW(None, '网上股票交易系统5.0')
+                user32.SetForegroundWindow(hwnd)
+                time.sleep(0.3)
+
+                # 物理鼠标点击
+                user32.SetCursorPos(cx, cy)
+                time.sleep(0.2)
+                user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+                time.sleep(0.05)
+                user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
                 time.sleep(0.5)
-                logger.info(f"点击按钮: {automation_id}")
+                logger.info(f"物理点击按钮: {automation_id} at ({cx}, {cy})")
                 return True
         logger.warning(f"未找到按钮: {automation_id}")
         return False

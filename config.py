@@ -11,8 +11,9 @@ TRADE_WINDOW_TITLE = '网上股票交易系统5.0'
 TOTAL_CAPITAL = 164516.53  # 模拟盘初始资金（会动态读取）
 MAX_POSITIONS = 8  # 最大持仓数
 POSITION_RATIO = 0.12  # 单只仓位占总资金比例（12%）
-STOP_LOSS = 0.05  # 止损 5%
+STOP_LOSS = 0.05  # 初始止损 5%
 TAKE_PROFIT = 0.15  # 止盈 15%
+TRAILING_GAIN_STEP = 0.05  # 跟踪止损步长：每涨5%
 
 # === 交易时间 ===
 TRADE_START = '09:30'
@@ -20,11 +21,16 @@ TRADE_END = '15:00'
 MORNING_END = '11:30'
 AFTERNOON_START = '13:00'
 
-# === Claude API（跟随 cc-switch 环境变量，换 provider 不用改这里）===
-API_BASE_URL = os.environ.get('ANTHROPIC_BASE_URL', 'https://api.anthropic.com')
-API_KEY = os.environ.get('ANTHROPIC_AUTH_TOKEN', os.environ.get('ANTHROPIC_API_KEY', ''))
-# MiMo 代理不支持 [1m] 后缀，去掉
-CLAUDE_MODEL = os.environ.get('ANTHROPIC_MODEL', 'mimo-v2-pro').split('[')[0]
+# === AI Trader API 配置 ===
+# 不在这里缓存，每次调用时实时读取环境变量
+# 这样你用 cc-switch 切模型后，AI Trader 自动跟着切
+def get_api_config():
+    """实时读取当前 API 配置（跟随 cc-switch 切换）"""
+    return {
+        'base_url': os.environ.get('ANTHROPIC_BASE_URL', 'https://token-plan-cn.xiaomimimo.com/anthropic'),
+        'api_key': os.environ.get('ANTHROPIC_AUTH_TOKEN', os.environ.get('ANTHROPIC_API_KEY', '')),
+        'model': os.environ.get('ANTHROPIC_MODEL', 'mimo-v2-pro').split('[')[0],
+    }
 
 # === Web仪表盘 ===
 DASHBOARD_HOST = '127.0.0.1'

@@ -15,6 +15,7 @@ import notifier
 import trade_logger as tlog
 import price_alert
 import stock_pool
+import prediction_tracker
 import kb_integration
 import html_report
 
@@ -94,22 +95,93 @@ def calculate_buy_price(current_price, indicators, strategy_name='auto'):
 
 # ========== 核心分析管线 ==========
 
+SIGNALS_FILE = os.path.join(config.DATA_DIR, 'dashboard_signals.json')
+
+
+def _save_dashboard_signal(action, code, name, price, quantity, stop_loss, take_profit, confidence, reasoning, chart_file=None):
+    """保存信号到仪表盘显示文件"""
+    signals = []
+    if os.path.exists(SIGNALS_FILE):
+        with open(SIGNALS_FILE, 'r', encoding='utf-8') as f:
+            signals = json.load(f)
+
+    signals.append({
+        'time': datetime.now().strftime('%H:%M:%S'),
+        'action': action,
+        'code': code,
+        'name': name,
+        'price': price,
+        'quantity': quantity,
+        'stop_loss': stop_loss,
+        'take_profit': take_profit,
+        'confidence': confidence,
+        'reasoning': reasoning[:500],
+        'chart': chart_file,
+    })
+
+    # 只保留今天的信号
+    today = datetime.now().strftime('%Y-%m-%d')
+    signals = [s for s in signals if s.get('date', today) == today]
+    for s in signals:
+        s['date'] = today
+
+    with open(SIGNALS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(signals, f, ensure_ascii=False, indent=2)
+
+    logger.info(f"信号已保存到仪表盘: {action} {name}({code})")
+
+
 def analyze_and_trade():
     """完整一轮分析"""
     now = datetime.now()
     logger.info(f"{'='*40} {now.strftime('%H:%M')} {'='*40}")
 
-    # 1. 大盘概况
+    # 1. 大盘概况 + 热门板块
     overview = md.get_market_overview()
     tlog.log_market(overview)
 
-    # 2. 全市场扫描（每小时扫一次就够了）
+    # 1.5 获取热门板块
+    hot_sectors = md.get_hot_sectors()
+    if hot_sectors:
+        top3 = ', '.join(f"{s['name']}({s['change_pct']:+.1f}%)" for s in hot_sectors[:3])
+        logger.info(f"热门板块: {top3}")
+
+    # 1.6 大盘环境AI判断（每轮调用1次）
+    positions = strategy.get_local_positions()
+    market_env = ai_analyzer.assess_market_environment(overview, hot_sectors, len(positions))
+    aggressiveness = market_env.get('aggressiveness', 0.5)
+    buy_confidence_threshold = 1.0 if aggressiveness < 0.3 else (0.75 if aggressiveness < 0.6 else 0.6)
+
+    if aggressiveness < 0.3:
+        logger.info(f"大盘环境差(aggressiveness={aggressiveness})，暂停买入推荐")
+    elif aggressiveness < 0.6:
+        logger.info(f"大盘环境偏弱(aggressiveness={aggressiveness})，提高买入门槛至{buy_confidence_threshold}")
+
+    # 2. 全市场扫描 + AI批量筛选（三层管线）
     scan_candidates = []
     if now.minute < 5:  # 每小时的前5分钟做一次全市场扫描
-        scan_candidates = stock_pool.scan_market(5)
-        for c in scan_candidates:
+        # Tier 1: 规则打分（无AI）
+        raw_candidates = stock_pool.scan_market(10)
+        for c in raw_candidates:
             tlog.log_signal(c['code'], c['name'], 'scan',
                            f"扫描发现: {', '.join(c['signals'])} (得分{c['score']})")
+
+        # Tier 2: AI批量筛选（1次API调用，选出最多5只）
+        if raw_candidates:
+            screened = ai_analyzer.screen_stocks(raw_candidates, overview)
+            if screened:
+                # screen_stocks返回的格式是 {stock_code, stock_name, ...}
+                for s in screened:
+                    scan_candidates.append({
+                        'code': s.get('stock_code', s.get('code', '')),
+                        'name': s.get('stock_name', s.get('name', '')),
+                        'score': s.get('score', 0),
+                        'signals': s.get('signals', []),
+                    })
+                logger.info(f"AI筛选: {len(raw_candidates)}只 → {len(scan_candidates)}只")
+            else:
+                logger.warning("AI筛选返回空，使用原始候选")
+                scan_candidates = raw_candidates[:5]
 
     # 3. 关注列表（每轮必查）
     watchlist = strategy.get_watchlist()
@@ -148,9 +220,13 @@ def analyze_and_trade():
 
         tlog.log_signal(code, name, rule_signal, signal_detail)
 
-        if rule_signal not in ('buy', 'sell'):
+        if rule_signal not in ('buy', 'sell', 'watch'):
             logger.info(f"  {name}: {rule_signal} ({signal_detail})")
             continue
+
+        # watch 信号也需要AI分析（看是否值得买）
+        if rule_signal == 'watch':
+            logger.info(f"  {name}: watch ({signal_detail}) → 调AI评估")
 
         # 有信号 → 调AI
         logger.info(f"  {name}: {rule_signal} ({signal_detail}) → 调AI确认")
@@ -159,6 +235,7 @@ def analyze_and_trade():
             stock_info=realtime,
             indicators=indicators,
             market_overview=overview,
+            hot_sectors=hot_sectors,
         )
 
         if 'error' in ai_result:
@@ -174,34 +251,100 @@ def analyze_and_trade():
 
         tlog.log_ai_decision(code, name, rec, conf, reasoning, risk, stop_loss, take_profit)
 
-        # 根据AI决策执行
-        if rec == '买入' and conf >= 0.6:
-            buy_price, order_type = calculate_buy_price(
-                indicators['close'], indicators, 'auto')
-            _execute_buy(code, name, buy_price, order_type, reasoning, conf)
+        # 不自动下单，只推飞书推荐
+        if rec == '买入' and conf >= buy_confidence_threshold:
+            # 买入前仓位检查
+            current_positions = strategy.get_local_positions()
 
-            # 设置条件预警
+            # 已达最大持仓数
+            if len(current_positions) >= config.MAX_POSITIONS:
+                logger.info(f"  跳过买入: 已达最大持仓数({config.MAX_POSITIONS})")
+                continue
+
+            # 已持有该股票
+            if any(p['code'] == code for p in current_positions):
+                logger.info(f"  跳过买入: 已持有 {name}")
+                continue
+
+            # 同板块已持有2只
+            stock_sector = strategy.SECTOR_MAP.get(code, '其他')
+            held_same_sector = sum(1 for p in current_positions
+                                   if strategy.SECTOR_MAP.get(p['code'], '其他') == stock_sector)
+            if held_same_sector >= 2:
+                logger.info(f"  跳过买入: {stock_sector}板块已持有{held_same_sector}只")
+                continue
+
+            # 可用资金检查
+            total_invested = sum(p.get('cost', 0) for p in current_positions)
+            available = config.TOTAL_CAPITAL - total_invested
+            if available < config.TOTAL_CAPITAL * config.POSITION_RATIO:
+                logger.info(f"  跳过买入: 可用资金不足")
+                continue
+            buy_price, order_type = calculate_buy_price(indicators['close'], indicators, 'auto')
+            suggest_qty = int(config.TOTAL_CAPITAL * config.POSITION_RATIO / buy_price)
+            suggest_qty = (suggest_qty // 100) * 100
+            suggest_cost = round(suggest_qty * buy_price, 2)
+
+            # 生成图表
+            import chart_gen
+            chart_path = chart_gen.generate_stock_chart(code, name, df)
+            chart_file = os.path.basename(chart_path) if chart_path else None
+
+            # 保存到仪表盘信号文件
+            _save_dashboard_signal('buy', code, name, buy_price, suggest_qty,
+                                   stop_loss, take_profit, conf, reasoning, chart_file)
+
+            notifier.send(
+                f"买入推荐: {name}({code})",
+                f"**建议买入**\n"
+                f"股票: {name} ({code})\n"
+                f"建议价格: {buy_price} ({order_type}单)\n"
+                f"建议数量: {suggest_qty}股 ({suggest_cost}元)\n"
+                f"止损: {stop_loss} | 止盈: {take_profit}\n"
+                f"置信度: {conf:.0%}\n\n"
+                f"**操作指引**:\n"
+                f"- 如果开盘就涨了2%以上，不追高，等回调\n"
+                f"- 跌破{stop_loss}元止损\n"
+                f"- 涨到{take_profit}元考虑减仓一半锁利润\n\n"
+                f"**分析**: {reasoning[:200]}"
+            )
+
             if stop_loss:
                 price_alert.add_alert(code, name, stop_loss, 'below', f'止损线: 亏损约5%')
             if take_profit:
                 price_alert.add_alert(code, name, take_profit, 'above', f'止盈线: 盈利约15%')
 
         elif rec == '卖出' and conf >= 0.6:
-            _execute_sell(code, name, indicators['close'], reasoning, conf)
+            positions = strategy.get_local_positions()
+            pos = next((p for p in positions if p['code'] == code), None)
+            sell_qty = pos['quantity'] if pos else '未知'
 
-        elif rec == '观望' and signals:
-            # 有信号但AI建议观望 → 设条件预警
-            if 'RSI超卖' in signal_detail:
-                # AI说等突破MA5再入场
-                ma5 = indicators.get('ma5', 0)
-                if ma5:
+            # 生成图表
+            import chart_gen
+            chart_path = chart_gen.generate_stock_chart(code, name, df)
+            chart_file = os.path.basename(chart_path) if chart_path else None
+
+            _save_dashboard_signal('sell', code, name, indicators['close'], sell_qty,
+                                   stop_loss, take_profit, conf, reasoning, chart_file)
+
+            notifier.send(
+                f"卖出推荐: {name}({code})",
+                f"**建议卖出**\n"
+                f"股票: {name} ({code})\n"
+                f"当前价: {indicators['close']}\n"
+                f"建议数量: {sell_qty}股\n"
+                f"置信度: {conf:.0%}\n\n"
+                f"**分析**: {reasoning[:200]}"
+            )
+
+        elif rec == '观望' and 'RSI超卖' in signal_detail:
+            ma5 = indicators.get('ma5', 0)
+            if ma5:
+                existing = [a for a in price_alert.get_active_alerts()
+                            if a['code'] == code and a['direction'] == 'above']
+                if not existing:
                     price_alert.add_alert(code, name, ma5, 'above',
                         f'AI建议: RSI超卖但等突破MA5({ma5})再入场')
-                    notifier.send(f"条件预警已设: {name}",
-                        f"{name}({code}) RSI超卖\nAI建议等突破MA5({ma5})再入场\n已设价格预警，突破时通知你")
-
-        else:
-            logger.info(f"  {name}: AI{rec}(置信度{conf:.0%})，不操作")
 
     # 5. 检查价格预警
     _check_price_alerts()
@@ -297,26 +440,109 @@ def _check_price_alerts():
 
 
 def _check_positions():
-    """检查持仓止损止盈"""
+    """全面持仓监控（跟踪止损 + 止盈 + 技术恶化 + 大盘暴跌）"""
     positions = strategy.get_local_positions()
     if not positions:
         return
 
+    # 获取大盘概况
+    overview = md.get_market_overview()
+    crash_level = strategy.check_market_crash(overview)
+
+    # 获取所有持仓当前价格
     current_prices = {}
     for pos in positions:
         quote = md.get_realtime_quote(pos['code'])
         if quote:
             current_prices[pos['code']] = quote['price']
 
+    # 1. 跟踪止损检查
     for sl in strategy.check_stop_loss(positions, current_prices):
-        logger.warning(f"止损: {sl['name']} 亏损{sl['change_pct']}%")
-        _execute_sell(sl['code'], sl['name'], sl['current_price'],
-                      f"止损触发: 亏损{sl['change_pct']}%", 1.0)
+        logger.warning(f"止损: {sl['name']} {sl['change_pct']:+.1f}%")
+        notifier.send_stop_loss_alert(
+            sl['name'], sl['code'], sl['buy_price'],
+            sl['current_price'], sl['change_pct'])
 
+    # 2. 止盈提示
     for tp in strategy.check_take_profit(positions, current_prices):
-        logger.info(f"止盈: {tp['name']} 盈利{tp['change_pct']}%")
-        _execute_sell(tp['code'], tp['name'], tp['current_price'],
-                      f"止盈触发: 盈利{tp['change_pct']}%", 1.0)
+        logger.info(f"止盈: {tp['name']} 盈利{tp['change_pct']:.1f}%")
+        notifier.send_take_profit_alert(
+            tp['name'], tp['code'], tp['buy_price'],
+            tp['current_price'], tp['change_pct'])
+
+    # 3. 技术面恶化检测
+    for pos in positions:
+        df = md.get_stock_history(pos['code'], days=60)
+        if len(df) < 30:
+            continue
+        indicators = md.get_technical_indicators(df)
+        det_signals = strategy.check_technical_deterioration(pos, indicators)
+        for sig_type, severity, message in det_signals:
+            current = current_prices.get(pos['code'], pos['buy_price'])
+            gain_pct = (current - pos['buy_price']) / pos['buy_price'] * 100
+            notifier.send_position_alert(pos, sig_type, severity, message, current, gain_pct)
+
+    # 4. 集中度风险
+    concentration_warnings = strategy.check_concentration_risk(positions, current_prices)
+    for warning in concentration_warnings:
+        notifier.send('持仓集中度警告', warning)
+
+    # 5. 大盘暴跌预警
+    if crash_level in ('warning', 'crash'):
+        notifier.send_market_alert(crash_level, overview, positions)
+
+
+# ========== Agent 模式 ==========
+
+AGENT_MODE = os.environ.get('AI_TRADER_AGENT_MODE', 'pipeline')  # 'pipeline' 或 'agent'
+
+
+def analyze_and_trade_agent():
+    """Agent 模式的完整分析（替代 analyze_and_trade）
+
+    AI 自主决定：先检查大盘 → 再看持仓 → 有信号才分析个股 → 结论
+    """
+    from agent_tools import create_default_registry
+    from agent_planner import AgentPlanner
+
+    now = datetime.now()
+    logger.info(f"{'='*40} {now.strftime('%H:%M')} [Agent] {'='*40}")
+
+    registry = create_default_registry()
+    planner = AgentPlanner(registry, max_steps=8)
+
+    # 获取当前持仓和关注列表信息
+    positions = strategy.get_local_positions()
+    watchlist = strategy.get_watchlist()
+
+    context = {
+        "positions_count": len(positions),
+        "positions": [{"code": p['code'], "name": p['name'], "buy_price": p['buy_price']}
+                      for p in positions],
+        "watchlist": [{"code": w['code'], "name": w.get('name', '')} for w in watchlist],
+    }
+
+    # 构建目标（包含当前时间信息）
+    is_scan_time = now.minute < 5
+    goal = (
+        f"执行一轮市场分析（当前时间 {now.strftime('%H:%M')}）：\n"
+        f"1. 检查大盘环境，如果环境很差可以提前结束\n"
+        f"2. 检查当前 {len(positions)} 只持仓的风控状态\n"
+        f"3. 分析关注列表中的股票是否有买入信号\n"
+        f"{"4. 扫描市场发现新机会" if is_scan_time else ""}\n"
+        f"5. 给出今日操作建议，包含具体价格和理由"
+    )
+
+    trace = planner.plan(goal=goal, context=context)
+
+    logger.info(f"Agent 完成: {trace.total_tool_calls}次工具调用, "
+                f"耗时{trace.end_time - trace.start_time:.1f}s")
+
+    # 发送 Agent 结论
+    if trace.final_answer:
+        notifier.send("Agent 分析报告", trace.final_answer[:2000])
+    else:
+        logger.warning("Agent 未产生结论")
 
 
 # ========== 调度 ==========
@@ -337,11 +563,49 @@ def is_afternoon_end():
     return '15:05' <= datetime.now().strftime('%H:%M') <= '15:10'
 
 
+def _ensure_kb_running():
+    """检查知识库是否在运行，没有就自动启动"""
+    import subprocess
+    try:
+        import requests
+        resp = requests.get('http://127.0.0.1:8766/', timeout=3)
+        logger.info("知识库已在运行")
+        return True
+    except Exception:
+        pass
+
+    # 知识库没跑，启动它
+    logger.info("知识库未运行，正在启动...")
+    kb_dir = r'C:\Users\陈独秀\knowledge-base\backend'
+    python = r'D:\Users\陈独秀\AppData\Local\Programs\Python\Python314\python.exe'
+    try:
+        subprocess.Popen(
+            [python, '-m', 'uvicorn', 'app.main:app', '--port', '8766'],
+            cwd=kb_dir,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+        time.sleep(5)
+        logger.info("知识库已启动")
+        return True
+    except Exception as e:
+        logger.error(f"知识库启动失败: {e}")
+        return False
+
+
 def main():
     logger.info("AI Trader v2 启动")
+
+    # 自动启动知识库
+    _ensure_kb_running()
+
     logger.info(f"  股票池: {len(stock_pool.get_stock_universe())} 只")
     logger.info(f"  关注列表: {len(strategy.get_watchlist())} 只")
     logger.info(f"  活跃预警: {len(price_alert.get_active_alerts())} 条")
+
+    # 自动结算过期预测
+    resolved = prediction_tracker.auto_resolve_stale_predictions()
+    if resolved:
+        logger.info(f"启动时自动结算 {resolved} 条过期预测")
 
     notifier.send("AI Trader 启动",
         f"监控系统启动\n股票池: {len(stock_pool.get_stock_universe())}只\n关注列表: {len(strategy.get_watchlist())}只")
@@ -351,39 +615,57 @@ def main():
     daily_reported = False
 
     while True:
-        now = datetime.now()
-        today = now.strftime('%Y-%m-%d')
-        current_minute = now.strftime('%H:%M')
+        try:
+            now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+            current_minute = now.strftime('%H:%M')
 
-        if now.weekday() >= 5:
-            time.sleep(600)
-            continue
+            # 周末：睡10分钟
+            if now.weekday() >= 5:
+                time.sleep(600)
+                continue
 
-        # 交易时间：每5分钟分析
-        if is_trading_time() and last_minute != current_minute and now.minute % 5 == 0:
-            try:
-                analyze_and_trade()
-            except Exception as e:
-                logger.error(f"分析异常: {e}", exc_info=True)
-            last_minute = current_minute
-            morning_reported = False  # 重置
+            # 午休（11:30-13:00）：睡5分钟
+            if '11:31' <= current_minute <= '12:59':
+                if not morning_reported:
+                    _send_summary("午间总结")
+                    morning_reported = True
+                time.sleep(300)
+                continue
 
-        # 午间总结
-        if is_morning_end() and not morning_reported:
-            _send_summary("午间总结")
-            morning_reported = True
+            # 盘前（<9:30）：睡2分钟
+            if current_minute < '09:30':
+                time.sleep(120)
+                continue
 
-        # 收盘日报
-        if is_afternoon_end() and not daily_reported:
-            _send_summary("全天复盘")
-            daily_reported = True
+            # 收盘后（>15:05）：睡到明天
+            if current_minute > '15:10':
+                if not daily_reported:
+                    _send_summary("全天复盘")
+                    daily_reported = True
+                time.sleep(3600)  # 睡1小时然后退出循环（下次任务会重启）
+                break
 
-        # 新的一天重置
-        if current_minute == '09:00':
-            morning_reported = False
-            daily_reported = False
+            # 交易时间：每5分钟分析
+            if is_trading_time() and last_minute != current_minute and now.minute % 5 == 0:
+                if AGENT_MODE == 'agent':
+                    analyze_and_trade_agent()
+                else:
+                    analyze_and_trade()
+                last_minute = current_minute
 
-        time.sleep(30)
+            # 新的一天重置
+            if current_minute == '09:00':
+                morning_reported = False
+                daily_reported = False
+
+            time.sleep(30)
+
+        except Exception as e:
+            logger.error(f"循环异常: {e}", exc_info=True)
+            time.sleep(60)
+
+    logger.info("监控结束，等待下次定时任务重启")
 
 
 def _send_summary(title):
@@ -412,6 +694,14 @@ def _send_summary(title):
 
     # 全天复盘时额外操作
     if '复盘' in title:
+        # 0. 自动结算过期预测
+        try:
+            resolved = prediction_tracker.auto_resolve_stale_predictions()
+            if resolved:
+                text += f"\n自动结算 {resolved} 条过期预测"
+        except Exception as e:
+            logger.error(f"预测结算失败: {e}")
+
         # 1. 保存到知识库
         try:
             kb_path = kb_integration.save_daily_note_to_kb()

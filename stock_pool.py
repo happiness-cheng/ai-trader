@@ -69,6 +69,14 @@ def scan_market(top_n=10):
             if not indicators:
                 continue
 
+            # 基本面过滤（跳过估值过高或亏损股）
+            fundamentals = md.get_fundamentals(code)
+            pe = fundamentals.get('pe')
+            if pe is not None:
+                if pe > 100 or pe < 0:
+                    logger.info(f"  跳过 {name}: PE={pe}")
+                    continue
+
             # 打分（简单的多因子打分）
             score = 0
             signals = []

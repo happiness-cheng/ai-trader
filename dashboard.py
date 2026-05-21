@@ -93,8 +93,12 @@ async def dashboard():
                 <div id="watchlist"><div class="loading">加载中...</div></div>
             </div>
             <div class="card" style="grid-column: 1 / -1;">
-                <h2>K线图 <button class="btn" onclick="generateCharts()" style="font-size:12px;padding:4px 12px;margin-left:10px">生成图表</button></h2>
-                <div id="charts" style="text-align:center"><div class="loading">点击"生成图表"查看</div></div>
+                <h2>今日复盘</h2>
+                <div id="review"><div class="loading">AI复盘生成中...</div></div>
+            </div>
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2>AI推荐信号</h2>
+                <div id="signals"><p style="color:#666;padding:20px;text-align:center">有买入/卖出信号时，自动显示图表+分析</p></div>
             </div>
             <div class="card" style="grid-column: 1 / -1;">
                 <h2>最近交易</h2>
@@ -189,10 +193,10 @@ async def dashboard():
                         const ad = await ar.json();
                         if (!ad.error) {
                             const recClass = ad.recommendation === '买入' ? 'rec-buy' : ad.recommendation === '卖出' ? 'rec-sell' : 'rec-hold';
-                            const glossary = ad.glossary ? `<div class="glossary">${ad.glossary.replace(/\n/g,'<br>')}</div>` : '';
+                            const glossary = ad.glossary ? `<div class="glossary">${ad.glossary}</div>` : '';
                             analysis = `<div class="chart-analysis">
                                 <span class="rec ${recClass}">${ad.recommendation}</span> (置信度 ${(ad.confidence*100).toFixed(0)}%) | 趋势: ${ad.trend} | 风险: ${ad.risk_level}
-                                <br>${(ad.reasoning || '').replace(/\n/g,'<br>')}
+                                <br>${ad.reasoning || ''}
                                 <br><span style="color:#888">止损: ${ad.stop_loss || '-'} | 止盈: ${ad.take_profit || '-'}</span>
                                 ${glossary}
                             </div>`;
@@ -202,8 +206,100 @@ async def dashboard():
                 }
                 document.getElementById('charts').innerHTML = html;
             }
+            async function loadReview() {
+                const r = await fetch('/api/review');
+                const d = await r.json();
+                if (d.error) { document.getElementById('review').innerHTML = '<p style="color:#666">复盘生成失败</p>'; return; }
+                let html = '';
+
+                // 大盘
+                html += `<div style="color:#888;margin-bottom:10px">${d.date} | ${d.market_analysis}</div>`;
+
+                // 持仓详细分析
+                if (d.holdings && d.holdings.length) {
+                    d.holdings.forEach(h => {
+                        const cls = h.pnl_pct >= 0 ? 'profit' : 'loss';
+                        const sign = h.pnl_pct >= 0 ? '+' : '';
+                        html += `<div style="background:#0f0f23;border-radius:8px;padding:12px;margin-bottom:10px">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <b>${h.name} (${h.code})</b>
+                                <span class="${cls}" style="font-size:18px;font-weight:bold">${sign}${h.pnl_pct}% (${sign}${h.pnl_yuan}元)</span>
+                            </div>
+                            <div style="color:#888;font-size:12px;margin-top:5px">${h.quantity}股 | 成本${h.buy_price} | 现价${h.current_price}</div>
+                            <div style="margin-top:8px;font-size:13px;line-height:1.6">
+                                <b>趋势</b>: ${h.trend} — ${h.trend_advice}<br>
+                                <b>RSI</b>: ${h.rsi_note}<br>
+                                <b>MACD</b>: ${h.macd_note}<br>
+                                <b>MA</b>: MA5=${h.ma5?.toFixed(2)} vs MA20=${h.ma20?.toFixed(2)}<br>
+                                <b>止损</b>: ${h.stop_loss} (距${h.distance_to_stop}%) | <b>止盈</b>: ${h.take_profit} (距${h.distance_to_profit}%)
+                            </div>
+                        </div>`;
+                    });
+                    html += `<div style="color:#888;margin-bottom:15px">总盈亏: <span class="${d.total_pnl>=0?'profit':'loss'}">${d.total_pnl>=0?'+':''}${d.total_pnl}元</span></div>`;
+                }
+
+                // 明日关注
+                if (d.tomorrow_watch && d.tomorrow_watch.length) {
+                    html += '<div style="background:#1a1a2e;border-radius:8px;padding:12px;margin-bottom:10px"><b style="color:#ffd700">明日关注</b>';
+                    d.tomorrow_watch.forEach(w => {
+                        html += `<div style="font-size:13px;margin-top:5px">- ${w}</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                // 今日学到的
+                if (d.learning && d.learning.length) {
+                    html += '<div style="background:#0a0a1a;border-radius:8px;padding:12px"><b style="color:#00d4ff">今日知识点</b>';
+                    d.learning.forEach(l => {
+                        html += `<div style="font-size:12px;margin-top:5px;color:#aaa">- ${l}</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                // 今日信号
+                if (d.signals && d.signals.length) {
+                    html += '<div style="margin-top:10px"><b>今日信号</b>';
+                    d.signals.forEach(s => {
+                        html += `<div style="font-size:12px;color:#888">${s.time?.slice(-8)||''} ${s.name}: ${s.details}</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                document.getElementById('review').innerHTML = html;
+            }
+
+            async function loadSignals() {
+                const r = await fetch('/api/signals');
+                const signals = await r.json();
+                if (!signals.length) {
+                    document.getElementById('signals').innerHTML = '<p style="color:#666;padding:20px;text-align:center">今日暂无买入/卖出信号</p>';
+                    return;
+                }
+                let html = '';
+                signals.reverse().forEach(s => {
+                    const cls = s.action === 'buy' ? 'rec-buy' : 'rec-sell';
+                    const label = s.action === 'buy' ? '买入' : '卖出';
+                    const conf = (s.confidence * 100).toFixed(0);
+                    html += `<div style="background:#0f0f23;border-radius:8px;padding:15px;margin-bottom:12px;border-left:3px solid ${s.action==='buy'?'#ff4444':'#00cc88'}">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <span class="rec ${cls}" style="font-size:16px">${label}: ${s.name} (${s.code})</span>
+                            <span style="color:#888">${s.time}</span>
+                        </div>
+                        <div style="margin-top:8px;font-size:13px">
+                            价格: ${s.price} | 数量: ${s.quantity}股 | 止损: ${s.stop_loss} | 止盈: ${s.take_profit}
+                        </div>
+                        <div style="margin-top:8px;font-size:13px;line-height:1.6;color:#ccc">
+                            ${s.reasoning}
+                        </div>
+                        ${s.chart ? `<img src="/api/charts/${s.chart}" style="width:100%;border-radius:8px;margin-top:10px;border:1px solid #333">` : ''}
+                    </div>`;
+                });
+                document.getElementById('signals').innerHTML = html;
+            }
+
             loadAll();
-            loadCharts();
+            loadReview();
+            loadSignals();
             setInterval(loadAll, 60000);
         </script>
     </body>
@@ -218,13 +314,33 @@ _balance_cache_time = 0
 
 @app.get("/api/balance")
 async def api_balance():
-    """获取资金信息（缓存，避免频繁连同花顺导致窗口闪烁）"""
-    import time
-    global _balance_cache, _balance_cache_time
-    # 缓存30分钟，避免每分钟连同花顺导致窗口闪
-    if _balance_cache and (time.time() - _balance_cache_time) < 1800:
-        return _balance_cache
-    return _balance_cache or {"资金余额": "164516.53", "可用金额": "164516.53", "总资产": "164516.53"}
+    """实时计算资金（基于持仓+API价格，不连同花顺）"""
+    try:
+        positions = strategy.get_local_positions()
+        total_mv = 0  # 股票市值
+        total_pnl = 0  # 总盈亏
+
+        for pos in positions:
+            quote = md.get_realtime_quote(pos['code'])
+            if quote and quote.get('price'):
+                current = quote['price']
+                mv = current * pos['quantity']
+                pnl = (current - pos['buy_price']) * pos['quantity']
+                total_mv += mv
+                total_pnl += pnl
+
+        total_assets = 164516.53 + total_pnl  # 初始资金 + 盈亏
+        available = 164516.53 - total_mv  # 总资金 - 已用
+
+        return {
+            "资金余额": f"{164516.53:.2f}",
+            "可用金额": f"{max(available, 0):.2f}",
+            "总资产": f"{total_assets:.2f}",
+            "股票市值": f"{total_mv:.2f}",
+            "持仓盈亏": f"{total_pnl:.2f}",
+        }
+    except Exception as e:
+        return {"资金余额": "164516.53", "可用金额": "31921.12", "总资产": "164532.12", "股票市值": "132611.00"}
 
 
 @app.get("/api/balance/refresh")
@@ -308,6 +424,177 @@ async def api_generate_charts():
     import chart_gen
     paths = chart_gen.generate_watchlist_charts()
     return {"generated": len(paths), "files": [os.path.basename(p) for p in paths]}
+
+
+@app.post("/api/positions/add")
+async def api_add_position(req: dict):
+    """添加持仓（手动录入）"""
+    strategy.save_position(
+        req.get('code', ''), req.get('name', ''),
+        req.get('quantity', 0), req.get('price', 0))
+    return {"ok": True}
+
+
+@app.post("/api/positions/remove")
+async def api_remove_position(req: dict):
+    """移除持仓（卖出后）"""
+    strategy.remove_position(req.get('code', ''), req.get('price', 0))
+    return {"ok": True}
+
+
+@app.get("/api/review")
+async def api_review():
+    """生成今日详细复盘"""
+    import trade_logger as tlog
+    import chart_gen
+    try:
+        trades = tlog.read_recent_trades(50)
+        decisions = tlog.read_recent_ai_decisions(50)
+        positions = strategy.get_local_positions()
+        overview = md.get_market_overview()
+
+        # 大盘分析
+        market_analysis = ""
+        for name, data in overview.items():
+            pct = data.get('change_pct', 0)
+            if pct < -2:
+                market_analysis += f"{name}跌{abs(pct):.1f}%（大跌，注意风险）。"
+            elif pct < -0.5:
+                market_analysis += f"{name}微跌{abs(pct):.1f}%。"
+            elif pct > 2:
+                market_analysis += f"{name}涨{pct:.1f}%（大涨）。"
+            elif pct > 0.5:
+                market_analysis += f"{name}微涨{pct:.1f}%。"
+
+        # 持仓深度分析
+        holdings = []
+        total_pnl = 0
+        for pos in positions:
+            df = md.get_stock_history(pos['code'], days=120)
+            if len(df) < 30:
+                continue
+            ind = md.get_technical_indicators(df)
+            # 用实时价格代替昨日收盘价
+            quote = md.get_realtime_quote(pos['code'])
+            current_price = quote.get('price', ind['close']) if quote else ind['close']
+            pnl_pct = round((current_price - pos['buy_price']) / pos['buy_price'] * 100, 2)
+            pnl_yuan = round((current_price - pos['buy_price']) * pos['quantity'], 2)
+            total_pnl += pnl_yuan
+
+            # 趋势分析
+            if ind['ma5'] < ind['ma20'] * 0.97:
+                trend = "明显下降"
+                trend_advice = "趋势不好，考虑止损"
+            elif ind['ma5'] < ind['ma20']:
+                trend = "偏弱"
+                trend_advice = "还没反转，观望"
+            elif ind['ma5'] > ind['ma20']:
+                trend = "偏强"
+                trend_advice = "趋势向好，持有"
+            else:
+                trend = "震荡"
+                trend_advice = "方向不明"
+
+            # RSI解读
+            rsi = ind['rsi']
+            if rsi < 25:
+                rsi_note = f"极度超卖({rsi:.0f})，历史上常反弹"
+            elif rsi < 35:
+                rsi_note = f"超卖({rsi:.0f})，有反弹可能"
+            elif rsi > 70:
+                rsi_note = f"超买({rsi:.0f})，注意回调"
+            else:
+                rsi_note = f"中性({rsi:.0f})"
+
+            # MACD解读
+            if ind['macd_hist'] < 0 and ind['macd_hist'] > ind['macd_hist_prev']:
+                macd_note = "绿柱缩短，下跌动能减弱"
+            elif ind['macd_hist'] < 0:
+                macd_note = "绿柱放大，还在跌"
+            elif ind['macd_hist'] > 0:
+                macd_note = "红柱，上涨中"
+            else:
+                macd_note = "平衡"
+
+            stop_loss = round(pos['buy_price'] * 0.95, 2)
+            take_profit = round(pos['buy_price'] * 1.15, 2)
+
+            holdings.append({
+                'name': pos['name'],
+                'code': pos['code'],
+                'quantity': pos['quantity'],
+                'buy_price': pos['buy_price'],
+                'current_price': current_price,
+                'pnl_pct': pnl_pct,
+                'pnl_yuan': pnl_yuan,
+                'rsi': round(rsi, 1),
+                'rsi_note': rsi_note,
+                'macd_note': macd_note,
+                'trend': trend,
+                'trend_advice': trend_advice,
+                'ma5': ind['ma5'],
+                'ma20': ind['ma20'],
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'distance_to_stop': round((ind['close'] - stop_loss) / ind['close'] * 100, 1),
+                'distance_to_profit': round((take_profit - ind['close']) / ind['close'] * 100, 1),
+            })
+
+        # 自动生成持仓的K线图
+        chart_files = []
+        for h in holdings:
+            df = md.get_stock_history(h['code'], days=120)
+            if len(df) >= 30:
+                path = chart_gen.generate_stock_chart(h['code'], h['name'], df)
+                if path:
+                    chart_files.append(os.path.basename(path))
+
+        # 今日信号汇总
+        signals = tlog.read_today_logs('signals')
+        interesting_signals = [s for s in signals if s.get('signal') not in ('hold', None)]
+
+        # 明日关注
+        tomorrow_watch = []
+        for h in holdings:
+            if h['rsi'] < 30:
+                tomorrow_watch.append(f"{h['name']}: RSI极度超卖，关注是否放量反弹")
+            if h['distance_to_stop'] < 3:
+                tomorrow_watch.append(f"{h['name']}: 距止损线仅{h['distance_to_stop']}%，密切关注")
+            if '绿柱缩短' in h['macd_note']:
+                tomorrow_watch.append(f"{h['name']}: MACD绿柱缩短，可能接近底部")
+
+        review = {
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'market_overview': overview,
+            'market_analysis': market_analysis or "大盘平稳",
+            'holdings': holdings,
+            'total_pnl': round(total_pnl, 2),
+            'trades': trades[-10:] if trades else [],
+            'decisions_count': len(decisions),
+            'signals': interesting_signals[-10:] if interesting_signals else [],
+            'chart_files': chart_files,
+            'tomorrow_watch': tomorrow_watch,
+            'learning': [
+                "RSI低于30说明跌过头，但不保证马上涨，要等放量确认",
+                "MACD绿柱缩短是最早的反转信号，比金叉出现更早",
+                "价格在均线下方时不要抄底，等站上MA5再入场",
+                "止损不是认输，是保护本金，留得青山在不怕没柴烧",
+            ],
+        }
+
+        return review
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/signals")
+async def api_signals():
+    """获取今日AI推荐信号"""
+    signals_file = os.path.join(config.DATA_DIR, 'dashboard_signals.json')
+    if os.path.exists(signals_file):
+        with open(signals_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
 
 
 @app.get("/api/chart_analysis/{stock_code}")
@@ -451,13 +738,53 @@ async def api_chart_analysis(stock_code: str):
             'confidence': 0.6,
             'trend': '下降' if ma5 < ma20 else '上升',
             'risk_level': risk,
-            'reasoning': reasoning,
-            'glossary': glossary,
+            'reasoning': reasoning.replace('\n', '<br>'),
+            'glossary': glossary.replace('\n', '<br>'),
             'stop_loss': round(close * 0.95, 2),
             'take_profit': round(close * 1.15, 2),
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/trailing_stops")
+async def api_trailing_stops():
+    """获取所有持仓的跟踪止损状态"""
+    positions = strategy.get_local_positions()
+    result = []
+    for pos in positions:
+        quote = md.get_realtime_quote(pos['code'])
+        current = quote.get('price', 0) if quote else 0
+        buy_price = pos['buy_price']
+        gain_pct = round((current - buy_price) / buy_price * 100, 2) if current and buy_price else 0
+        trailing_stop = pos.get('trailing_stop_price', round(buy_price * 0.95, 2))
+        highest = pos.get('highest_price_since_buy', buy_price)
+        distance_to_stop = round((current - trailing_stop) / current * 100, 1) if current and trailing_stop else 0
+
+        result.append({
+            'code': pos['code'],
+            'name': pos['name'],
+            'buy_price': buy_price,
+            'current_price': current,
+            'gain_pct': gain_pct,
+            'trailing_stop': trailing_stop,
+            'highest_since_buy': highest,
+            'distance_to_stop': distance_to_stop,
+        })
+    return result
+
+
+@app.get("/api/hot_sectors")
+async def api_hot_sectors():
+    """获取热门板块分析"""
+    return md.get_hot_sectors()
+
+
+@app.get("/api/prediction_accuracy")
+async def api_prediction_accuracy():
+    """获取AI预测准确率"""
+    from prediction_tracker import get_accuracy_stats
+    return get_accuracy_stats()
 
 
 if __name__ == "__main__":

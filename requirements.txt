@@ -5,3 +5,4 @@ ta
 fastapi
 uvicorn
 pandas
+chromadb

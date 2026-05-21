@@ -184,6 +184,50 @@ def get_lessons_prompt_context():
     return f"\n\n## 历史经验教训（请参考这些经验做决策）\n{lessons}\n"
 
 
+# ========== RAG 语义检索 ==========
+
+_rag_store = None
+
+
+def get_rag_store():
+    """懒加载 RagStore 单例"""
+    global _rag_store
+    if _rag_store is None:
+        try:
+            from rag_store import RagStore
+            _rag_store = RagStore()
+        except ImportError:
+            logger.info("ChromaDB未安装，RAG不可用")
+            return None
+    return _rag_store
+
+
+def get_rag_context(query, top_k=3):
+    """RAG语义检索上下文（替代/增强 get_lessons_prompt_context）
+
+    Args:
+        query: 查询文本，如 "贵州茅台 MACD金叉 RSI超卖"
+        top_k: 返回结果数
+
+    Returns: 格式化的上下文字符串，失败时 fallback 到旧方法
+    """
+    store = get_rag_store()
+    if not store:
+        return get_lessons_prompt_context()
+
+    results = store.search(query, top_k=top_k)
+    if not results:
+        return get_lessons_prompt_context()
+
+    context = "\n## 相关历史经验（语义检索）\n"
+    for r in results:
+        meta = r['metadata']
+        date = meta.get('date', '')
+        doc = r['document'][:300]
+        context += f"- [{date}] {doc}\n"
+    return context
+
+
 # 测试
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(message)s')

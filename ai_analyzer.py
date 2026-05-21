@@ -3,6 +3,7 @@
 """
 import json
 import logging
+import time
 import requests
 
 import config
@@ -10,28 +11,53 @@ import config
 logger = logging.getLogger(__name__)
 
 
-def _call_claude(prompt, max_tokens=2000):
-    """直接调用 Claude Messages API"""
-    url = f"{config.API_BASE_URL}/v1/messages"
+def _call_claude(prompt, max_tokens=2000, max_retries=2):
+    """直接调用 Claude Messages API（带重试降级，每次调用实时读取配置）"""
+    cfg = config.get_api_config()
+    url = f"{cfg['base_url']}/v1/messages"
     headers = {
         "Content-Type": "application/json",
-        "x-api-key": config.API_KEY,
+        "x-api-key": cfg['api_key'],
         "anthropic-version": "2023-06-01",
     }
     payload = {
-        "model": config.CLAUDE_MODEL,
+        "model": cfg['model'],
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
 
-    # 提取文本内容
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            return block["text"]
+            if resp.status_code >= 500:
+                logger.warning(f"AI API 5xx (第{attempt+1}次): {resp.status_code}")
+                if attempt < max_retries:
+                    time.sleep(2 ** attempt)
+                    continue
+                return ""
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    return block["text"]
+            return ""
+
+        except requests.exceptions.Timeout:
+            logger.warning(f"AI API 超时 (第{attempt+1}次)")
+            if attempt < max_retries:
+                time.sleep(2 ** attempt)
+                continue
+            return ""
+        except Exception as e:
+            logger.error(f"AI API 错误 (第{attempt+1}次): {e}")
+            if attempt < max_retries:
+                time.sleep(2 ** attempt)
+                continue
+            return ""
+
     return ""
 
 
@@ -189,6 +215,34 @@ def screen_stocks(candidates, market_overview=None):
         return []
 
 
+def assess_market_environment(market_overview, hot_sectors, positions_count):
+    """AI判断大盘环境和操作激进度
+
+    Returns: {environment, aggressiveness(0-1), reasoning, action}
+    """
+    try:
+        prompt = f"""判断当前A股市场环境，给出操作建议。
+
+大盘数据: {json.dumps(market_overview or {}, ensure_ascii=False)}
+热门板块: {json.dumps(hot_sectors or [], ensure_ascii=False)}
+当前持仓数: {positions_count}
+
+请返回JSON（只返回JSON不要其他内容）:
+{{
+    "environment": "bullish/neutral/bearish/crash",
+    "aggressiveness": 0.0到1.0之间的数字（越高越激进，可以买入）,
+    "reasoning": "分析原因（中文）",
+    "action": "正常操作/减少推荐/暂停买入/考虑减仓"
+}}"""
+        text = _call_claude(prompt, max_tokens=1000)
+        result = _parse_json(text)
+        logger.info(f"大盘环境: {result.get('environment', '?')} (aggressiveness={result.get('aggressiveness', '?')})")
+        return result
+    except Exception as e:
+        logger.warning(f"大盘环境判断失败（使用默认值）: {e}")
+        return {'environment': 'neutral', 'aggressiveness': 0.5, 'reasoning': '判断失败', 'action': '正常操作'}
+
+
 def generate_daily_report(balance, positions, trades, analyses):
     """生成每日复盘报告"""
     try:
@@ -219,6 +273,74 @@ def generate_daily_report(balance, positions, trades, analyses):
     except Exception as e:
         logger.error(f"生成日报失败: {e}")
         return f"日报生成失败: {e}"
+
+
+def analyze_stock_agent(stock_info, indicators, market_overview=None, hot_sectors=None):
+    """Agent 模式分析：RAG 检索 + 工具调用
+
+    比 analyze_stock 更智能：会自动检索历史经验，可以用工具获取额外数据
+    """
+    try:
+        from kb_integration import get_rag_context
+
+        code = stock_info.get('code', '')
+        name = stock_info.get('name', '')
+
+        # 构建信号列表用于 RAG 查询
+        signals = []
+        if indicators.get('macd_golden_cross'): signals.append('MACD金叉')
+        if indicators.get('rsi_oversold'): signals.append(f'RSI超卖({indicators["rsi"]:.0f})')
+        if indicators.get('macd_death_cross'): signals.append('MACD死叉')
+        if indicators.get('ma_golden_cross'): signals.append('均线金叉')
+        if indicators.get('volume_surge'): signals.append('放量')
+
+        # RAG 检索相关历史经验
+        rag_context = get_rag_context(
+            query=f"{name}({code}) 股票分析 信号:{','.join(signals) if signals else '无'}",
+            top_k=3,
+        )
+
+        # 加入历史预测表现
+        from prediction_tracker import get_prompt_context
+        history = get_prompt_context()
+
+        # 构建 prompt（复用 ANALYSIS_PROMPT）
+        prompt = ANALYSIS_PROMPT.format(
+            stock_info=json.dumps(stock_info, ensure_ascii=False, indent=2),
+            indicators=json.dumps(indicators, ensure_ascii=False, indent=2),
+            market_overview=json.dumps(market_overview or {}, ensure_ascii=False, indent=2),
+            hot_sectors=json.dumps(hot_sectors or [], ensure_ascii=False, indent=2),
+        )
+
+        if rag_context:
+            prompt += rag_context
+        if history:
+            prompt += history
+
+        text = _call_claude(prompt, max_tokens=4000)
+        result = _parse_json(text)
+
+        logger.info(f"Agent分析完成: {result.get('stock_code')} -> {result.get('recommendation')}")
+
+        # 记录预测
+        from prediction_tracker import log_prediction
+        log_prediction(
+            result.get('stock_code', code),
+            result.get('stock_name', name),
+            result.get('recommendation', ''),
+            result.get('confidence', 0),
+            result.get('current_price', 0),
+            result.get('stop_loss_price'),
+            result.get('take_profit_price'),
+            result.get('reasoning', ''),
+            result.get('key_signals', []),
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Agent分析失败: {e}")
+        return {"error": str(e)}
 
 
 # 测试

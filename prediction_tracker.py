@@ -4,9 +4,10 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import config
+import market_data as md
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,85 @@ def get_prompt_context():
         lines.append("\n你最近表现不错，继续保持分析质量。")
 
     return '\n'.join(lines)
+
+
+def auto_resolve_stale_predictions(max_age_days=5):
+    """自动结算过期预测（用当前价格判断对错）
+
+    买入预测：现价>买入价→correct，现价<止损→wrong，其余→partial
+    卖出预测：现价<卖出价→correct，现价>止盈→wrong，其余→partial
+    观望预测：价格在止损到止盈之间→correct
+
+    Returns: 新结算数量
+    """
+    preds = _load()
+    unresolved = [p for p in preds if p.get('outcome') is None]
+
+    if not unresolved:
+        return 0
+
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    resolved_count = 0
+
+    for p in unresolved:
+        # 检查年龄
+        try:
+            pred_time = datetime.strptime(p['date'], '%Y-%m-%d %H:%M')
+        except (ValueError, KeyError):
+            continue
+
+        if pred_time > cutoff:
+            continue  # 还没过期
+
+        code = p.get('code', '')
+        if not code:
+            continue
+
+        # 获取当前价格
+        quote = md.get_realtime_quote(code)
+        if not quote or not quote.get('price'):
+            logger.warning(f"无法获取 {code} 价格，跳过结算")
+            continue
+
+        current_price = quote['price']
+        buy_price = p.get('price_at_prediction', 0)
+        stop_loss = p.get('stop_loss')
+        take_profit = p.get('take_profit')
+
+        if not buy_price:
+            continue
+
+        change_pct = round((current_price - buy_price) / buy_price * 100, 2)
+        rec = p.get('recommendation', '')
+
+        # 根据推荐类型判断结果
+        if rec == '买入':
+            if current_price > buy_price:
+                outcome = 'correct'
+            elif stop_loss and current_price <= stop_loss:
+                outcome = 'wrong'
+            else:
+                outcome = 'partial'
+        elif rec == '卖出':
+            if current_price < buy_price:
+                outcome = 'correct'
+            elif take_profit and current_price >= take_profit:
+                outcome = 'wrong'
+            else:
+                outcome = 'partial'
+        else:  # 观望
+            low_bound = stop_loss if stop_loss else buy_price * 0.95
+            high_bound = take_profit if take_profit else buy_price * 1.15
+            if low_bound <= current_price <= high_bound:
+                outcome = 'correct'
+            else:
+                outcome = 'partial'
+
+        resolve_prediction(p['id'], outcome, change_pct)
+        resolved_count += 1
+        logger.info(f"自动结算: {p.get('name','')}({code}) {rec} → {outcome} (实际{change_pct:+.1f}%)")
+
+    return resolved_count
 
 
 # 测试

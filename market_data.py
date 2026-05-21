@@ -286,6 +286,42 @@ def get_hot_sectors():
         return []
 
 
+def get_fundamentals(symbol):
+    """获取基本面数据（东方财富免费API）
+
+    Returns: {pe, market_cap, turnover_rate}
+    """
+    try:
+        if symbol.startswith('6'):
+            secid = f'1.{symbol}'
+        else:
+            secid = f'0.{symbol}'
+
+        data = _curl_json('https://push2.eastmoney.com/api/qt/stock/get', {
+            'secid': secid,
+            'fields': 'f9,f10,f116,f117',
+        })
+
+        if not data or not data.get('data'):
+            return {}
+
+        d = data['data']
+        pe = d.get('f9')  # 市盈率
+        if pe and isinstance(pe, (int, float)) and pe > 0:
+            pe = round(pe, 2)
+        else:
+            pe = None
+
+        return {
+            'pe': pe,
+            'market_cap': d.get('f116'),  # 总市值
+            'turnover_rate': d.get('f10'),  # 换手率
+        }
+    except Exception as e:
+        logger.error(f"获取 {symbol} 基本面失败: {e}")
+        return {}
+
+
 # 测试
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')

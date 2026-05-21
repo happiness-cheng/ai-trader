@@ -20,3 +20,9 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# 个人文件
+CLAUDE.md
+LEARNING_PLAN.md
+PROJECTS_AND_LEARNING.md
+benchmark_*.json

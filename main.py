@@ -439,6 +439,202 @@ def _check_price_alerts():
         )
 
 
+def _handle_single_position_risk(risk):
+    """单只股票仓位过重：分析行情后给出具体减仓建议"""
+    pos = risk['position']
+    code = pos['code']
+    name = pos['name']
+    weight = risk['weight']
+    current_price = risk['current_price']
+    gain_pct = risk['gain_pct']
+    total_value = risk['total_value']
+
+    # 检查通知去重
+    if not notifier._can_send(code, 'concentration'):
+        return
+
+    # 获取技术指标分析当前行情
+    df = md.get_stock_history(code, days=60)
+    indicators = md.get_technical_indicators(df) if len(df) >= 30 else {}
+
+    # 根据技术面判断操作建议
+    if indicators:
+        ma5 = indicators.get('ma5', 0)
+        ma20 = indicators.get('ma20', 0)
+        rsi = indicators.get('rsi', 50)
+        macd_hist = indicators.get('macd_hist', 0)
+        macd_hist_prev = indicators.get('macd_hist_prev', 0)
+        trend_up = ma5 > ma20 if ma5 and ma20 else False
+
+        # 技术面评分：决定"减多少"
+        tech_score = 0
+        tech_details = []
+
+        if trend_up:
+            tech_score += 1
+            tech_details.append(f"趋势向上(MA5>{ma5:.2f}>MA20>{ma20:.2f})")
+        else:
+            tech_score -= 1
+            tech_details.append(f"趋势向下(MA5<{ma5:.2f}<MA20<{ma20:.2f})")
+
+        if rsi > 70:
+            tech_score -= 1
+            tech_details.append(f"RSI={rsi:.0f}超买")
+        elif rsi < 30:
+            tech_score += 1
+            tech_details.append(f"RSI={rsi:.0f}超卖(可能反弹)")
+
+        if macd_hist > 0 and macd_hist > macd_hist_prev:
+            tech_score += 1
+            tech_details.append("MACD红柱放大")
+        elif macd_hist < 0 and macd_hist < macd_hist_prev:
+            tech_score -= 1
+            tech_details.append("MACD绿柱放大(下跌加速)")
+
+        # 根据技术面+盈亏决定减仓比例
+        if gain_pct > 15 and tech_score <= -1:
+            # 高盈利 + 技术面恶化 → 大幅减仓
+            sell_pct = 50
+            reason = "盈利丰厚但技术面转弱，建议锁定一半利润"
+            sell_price = round(current_price * 0.999, 2)  # 略低于现价挂单
+            action_type = "减仓一半"
+        elif gain_pct > 5 and tech_score <= 0:
+            # 有盈利 + 技术面偏弱 → 中等减仓
+            sell_pct = 30
+            reason = "盈利尚可但集中度过高，先减一部分降风险"
+            sell_price = round(current_price * 0.999, 2)
+            action_type = "减仓30%"
+        elif gain_pct > 0:
+            # 小盈利或技术面还行 → 小幅减仓
+            sell_pct = 20
+            reason = "集中度过高需要分散，小幅减仓降低风险"
+            sell_price = round(current_price * 0.998, 2)
+            action_type = "减仓20%"
+        elif gain_pct > -5:
+            # 小亏 → 考虑减仓但不急
+            sell_pct = 20
+            reason = "仓位过重且小幅亏损，减仓降低风险敞口"
+            sell_price = round(current_price * 0.998, 2)
+            action_type = "减仓20%"
+        else:
+            # 亏损较大 → 看止损线
+            sell_pct = 0
+            reason = "亏损较大，先看是否触发止损，止损前不主动减仓"
+            sell_price = current_price
+            action_type = "暂不减仓"
+    else:
+        # 无技术指标数据
+        sell_pct = 20 if gain_pct > 0 else 0
+        reason = "集中度过高，建议适度减仓分散风险"
+        sell_price = round(current_price * 0.999, 2)
+        action_type = f"减仓{sell_pct}%" if sell_pct > 0 else "暂不减仓"
+        tech_details = ["数据不足，无法深度分析"]
+
+    # 计算减仓数量
+    sell_qty = int(pos['quantity'] * sell_pct / 100)
+    sell_qty = (sell_qty // 100) * 100  # 取整到100股
+    sell_value = round(sell_qty * sell_price, 2)
+
+    # 目标仓位比例
+    target_weight = 12  # config.POSITION_RATIO
+    current_value = current_price * pos['quantity']
+    target_value = total_value * target_weight / 100
+    target_qty = int(target_value / current_price / 100) * 100
+
+    # 构建通知内容
+    content = (
+        f"**{name}({code}) 持仓过重**\n"
+        f"当前仓位占比: {weight:.0f}%（上限{target_weight}%）\n"
+        f"买入价: {pos['buy_price']} → 现价: {current_price}\n"
+        f"盈亏: {gain_pct:+.1f}%\n\n"
+        f"**行情分析**:\n"
+        f"{' | '.join(tech_details)}\n\n"
+        f"**操作建议: {action_type}**\n"
+    )
+
+    if sell_qty > 0:
+        content += (
+            f"- 卖出 {sell_qty} 股 @ {sell_price}元（约{sell_value}元）\n"
+            f"- 卖出后仓位降至约{weight * (1 - sell_pct/100):.0f}%\n"
+            f"- 目标仓位: {target_weight}%（需减到约{target_qty}股）\n"
+        )
+    else:
+        content += f"- {reason}\n"
+
+    content += (
+        f"\n**依据**: {reason}\n"
+        f"{' | '.join(tech_details)}"
+    )
+
+    notifier.send(f"持仓集中度: {name}({weight:.0f}%)", content)
+    logger.info(f"集中度预警: {name} 占{weight:.0f}%，建议{action_type}")
+
+
+def _handle_sector_risk(risk):
+    """板块仓位过重：分析板块内各股，建议减掉最弱的"""
+    sector = risk['sector']
+    weight = risk['weight']
+    positions_in_sector = risk['positions']
+    total_value = risk['total_value']
+
+    if not notifier._can_send(f'sector_{sector}', 'concentration'):
+        return
+
+    # 分析板块内每只股票的技术面
+    stock_analyses = []
+    for pos in positions_in_sector:
+        code = pos['code']
+        current = md.get_realtime_quote(code)
+        current_price = current.get('price', pos['buy_price']) if current else pos['buy_price']
+        gain_pct = (current_price - pos['buy_price']) / pos['buy_price'] * 100 if pos['buy_price'] else 0
+
+        # 技术面强度
+        df = md.get_stock_history(code, days=60)
+        if len(df) >= 30:
+            indicators = md.get_technical_indicators(df)
+            strength = 0
+            if indicators.get('price_above_ma5'): strength += 1
+            if indicators.get('price_above_ma20'): strength += 1
+            if indicators.get('macd_hist', 0) > 0: strength += 1
+            if indicators.get('rsi', 50) < 70: strength += 1
+            trend = "偏强" if strength >= 3 else ("中性" if strength >= 2 else "偏弱")
+        else:
+            strength = 0
+            trend = "数据不足"
+
+        stock_analyses.append({
+            'name': pos['name'],
+            'code': code,
+            'gain_pct': round(gain_pct, 2),
+            'strength': strength,
+            'trend': trend,
+            'quantity': pos['quantity'],
+            'current_price': current_price,
+        })
+
+    # 按强度排序，最弱的建议先减
+    stock_analyses.sort(key=lambda x: (x['strength'], x['gain_pct']))
+
+    content = (
+        f"**{sector}板块仓位过重**\n"
+        f"板块占比: {weight:.0f}%（上限40%）\n"
+        f"包含 {len(positions_in_sector)} 只股票\n\n"
+        f"**板块内各股对比**:\n"
+    )
+
+    weakest = stock_analyses[0]
+    for s in stock_analyses:
+        tag = " ← 建议先减这只" if s == weakest else ""
+        content += f"- {s['name']}: 盈亏{s['gain_pct']:+.1f}% 技术面{s['trend']}{tag}\n"
+
+    content += (
+        f"\n**建议**: 优先减仓 **{weakest['name']}**（技术面最弱）\n"
+        f"理由: 板块集中度过高时，保留强势股、减掉弱势股，降低板块风险的同时不丢强势收益"
+    )
+
+    notifier.send(f"板块集中度: {sector}({weight:.0f}%)", content)
+
+
 def _check_positions():
     """全面持仓监控（跟踪止损 + 止盈 + 技术恶化 + 大盘暴跌）"""
     positions = strategy.get_local_positions()
@@ -482,10 +678,13 @@ def _check_positions():
             gain_pct = (current - pos['buy_price']) / pos['buy_price'] * 100
             notifier.send_position_alert(pos, sig_type, severity, message, current, gain_pct)
 
-    # 4. 集中度风险
-    concentration_warnings = strategy.check_concentration_risk(positions, current_prices)
-    for warning in concentration_warnings:
-        notifier.send('持仓集中度警告', warning)
+    # 4. 集中度风险（带行情分析和操作建议）
+    concentration_risks = strategy.check_concentration_risk(positions, current_prices)
+    for risk in concentration_risks:
+        if risk['type'] == 'single_position':
+            _handle_single_position_risk(risk)
+        elif risk['type'] == 'sector_concentration':
+            _handle_sector_risk(risk)
 
     # 5. 大盘暴跌预警
     if crash_level in ('warning', 'crash'):

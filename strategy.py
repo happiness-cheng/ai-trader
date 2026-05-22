@@ -280,11 +280,11 @@ def check_market_crash(overview):
 def check_concentration_risk(positions, current_prices):
     """持仓集中度检查
 
-    Returns: [warning_message, ...]
+    Returns: [{type, position/sector, weight, total_value, ...}, ...]
     """
-    warnings = []
+    risks = []
     if not positions:
-        return warnings
+        return risks
 
     # 计算各持仓市值
     total_value = 0
@@ -297,27 +297,44 @@ def check_concentration_risk(positions, current_prices):
         total_value += value
 
     if total_value <= 0:
-        return warnings
+        return risks
 
     # 单只占比 > 20%
     for pos in positions:
         code = pos['code']
         weight = position_values[code] / total_value * 100
         if weight > 20:
-            warnings.append(f"{pos['name']}占总仓位{weight:.0f}%，超过20%上限，建议减仓")
+            current_price = current_prices.get(code, pos['buy_price'])
+            gain_pct = (current_price - pos['buy_price']) / pos['buy_price'] * 100 if pos['buy_price'] else 0
+            risks.append({
+                'type': 'single_position',
+                'position': pos,
+                'weight': round(weight, 1),
+                'total_value': total_value,
+                'current_price': current_price,
+                'gain_pct': round(gain_pct, 2),
+            })
 
     # 同板块占比 > 40%
     sector_values = {}
+    sector_positions = {}
     for pos in positions:
         sector = SECTOR_MAP.get(pos['code'], '其他')
         sector_values[sector] = sector_values.get(sector, 0) + position_values.get(pos['code'], 0)
+        sector_positions.setdefault(sector, []).append(pos)
 
     for sector, value in sector_values.items():
         weight = value / total_value * 100
         if weight > 40:
-            warnings.append(f"{sector}板块占总仓位{weight:.0f}%，超过40%上限，建议分散到其他板块")
+            risks.append({
+                'type': 'sector_concentration',
+                'sector': sector,
+                'weight': round(weight, 1),
+                'positions': sector_positions[sector],
+                'total_value': total_value,
+            })
 
-    return warnings
+    return risks
 
 
 def calculate_position_size(total_capital, current_positions_count):

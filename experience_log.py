@@ -256,12 +256,28 @@ def reflect_predictions(limit=None):
 
 
 def _call_llm_reflection(prompt):
-    """反思生成的 LLM 调用（cc-switch 通道，与 regen_corpus 同配置）"""
+    """反思生成的 LLM 调用——配置优先级：环境变量 > 项目 .env"""
     try:
         from openai import OpenAI
-        settings_path = os.path.join(os.path.expanduser('~'), '.claude', 'settings.json')
-        with open(settings_path, 'r', encoding='utf-8') as f:
-            env = json.load(f).get('env', {})
+
+        def _load_env():
+            # 环境变量优先（生产）；回退到项目 .env（本地开发）
+            env = {k: os.environ[k] for k in
+                   ('ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL')
+                   if os.environ.get(k)}
+            if env:
+                return env
+            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if '=' in line and not line.startswith('#'):
+                            k, _, v = line.partition('=')
+                            env.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            return env
+
+        env = _load_env()
         client = OpenAI(
             api_key=env.get('ANTHROPIC_AUTH_TOKEN', ''),
             base_url=env.get('ANTHROPIC_BASE_URL', '').rstrip('/') + '/v1',

@@ -248,6 +248,7 @@ def analyze_and_trade():
         risk = ai_result.get('risk_level', '中')
         stop_loss = ai_result.get('stop_loss_price')
         take_profit = ai_result.get('take_profit_price')
+        model_pred = ai_result.get('model_prediction')
 
         tlog.log_ai_decision(code, name, rec, conf, reasoning, risk, stop_loss, take_profit)
 
@@ -294,6 +295,14 @@ def analyze_and_trade():
             _save_dashboard_signal('buy', code, name, buy_price, suggest_qty,
                                    stop_loss, take_profit, conf, reasoning, chart_file)
 
+            model_text = ""
+            if model_pred:
+                model_text = (
+                    f"\n**模型预测**: 1天{model_pred.get('1d',0):+.2f}% "
+                    f"1周{model_pred.get('1w',0):+.2f}% "
+                    f"1月{model_pred.get('1m',0):+.2f}%"
+                )
+
             notifier.send(
                 f"买入推荐: {name}({code})",
                 f"**建议买入**\n"
@@ -301,7 +310,7 @@ def analyze_and_trade():
                 f"建议价格: {buy_price} ({order_type}单)\n"
                 f"建议数量: {suggest_qty}股 ({suggest_cost}元)\n"
                 f"止损: {stop_loss} | 止盈: {take_profit}\n"
-                f"置信度: {conf:.0%}\n\n"
+                f"置信度: {conf:.0%}{model_text}\n\n"
                 f"**操作指引**:\n"
                 f"- 如果开盘就涨了2%以上，不追高，等回调\n"
                 f"- 跌破{stop_loss}元止损\n"
@@ -327,13 +336,24 @@ def analyze_and_trade():
             _save_dashboard_signal('sell', code, name, indicators['close'], sell_qty,
                                    stop_loss, take_profit, conf, reasoning, chart_file)
 
+            model_text = ""
+            if model_pred:
+                model_text = (
+                    f"\n**模型预测**: 1天{model_pred.get('1d',0):+.2f}% "
+                    f"1周{model_pred.get('1w',0):+.2f}% "
+                    f"1月{model_pred.get('1m',0):+.2f}%"
+                )
+
             notifier.send(
                 f"卖出推荐: {name}({code})",
                 f"**建议卖出**\n"
                 f"股票: {name} ({code})\n"
                 f"当前价: {indicators['close']}\n"
                 f"建议数量: {sell_qty}股\n"
-                f"置信度: {conf:.0%}\n\n"
+                f"置信度: {conf:.0%}{model_text}\n\n"
+                f"**操作指引**:\n"
+                f"- 卖出后不要急着买回来，等新的信号\n"
+                f"- 如果卖飞了（卖出后继续涨），不要追高\n\n"
                 f"**分析**: {reasoning[:200]}"
             )
 
@@ -693,7 +713,9 @@ def _check_positions():
 
 # ========== Agent 模式 ==========
 
-AGENT_MODE = os.environ.get('AI_TRADER_AGENT_MODE', 'pipeline')  # 'pipeline' 或 'agent'
+AGENT_MODE = os.environ.get('AI_TRADER_AGENT_MODE', 'pipeline')
+if AGENT_MODE not in ('pipeline', 'agent', 'production'):
+    raise ValueError(f"不支持的 AI_TRADER_AGENT_MODE: {AGENT_MODE}")
 
 
 def analyze_and_trade_agent():
@@ -742,6 +764,31 @@ def analyze_and_trade_agent():
         notifier.send("Agent 分析报告", trace.final_answer[:2000])
     else:
         logger.warning("Agent 未产生结论")
+
+
+def analyze_and_trade_production():
+    """使用新持久化 Runtime 执行一轮只读市场分析。"""
+    from ai_trader.runtime import build_production_runner
+    from ai_trader.settings import Settings
+
+    settings = Settings()
+    if settings.runtime_mode != 'production':
+        raise RuntimeError(
+            "AI_TRADER_AGENT_MODE=production 时必须同时设置 "
+            "AI_TRADER_RUNTIME_MODE=production"
+        )
+
+    runner, repository = build_production_runner(settings)
+    try:
+        result = runner.run(
+            f"执行一轮 A 股市场分析（{datetime.now().strftime('%H:%M')}）："
+            "检查大盘、持仓和关注标的，只输出有工具证据的建议，"
+            "不执行交易。"
+        )
+        logger.info(f"生产 Runtime 完成: run_id={result.run_id}")
+        notifier.send("Production Agent 分析报告", result.final_text[:2000])
+    finally:
+        repository.close()
 
 
 # ========== 调度 ==========
@@ -847,7 +894,9 @@ def main():
 
             # 交易时间：每5分钟分析
             if is_trading_time() and last_minute != current_minute and now.minute % 5 == 0:
-                if AGENT_MODE == 'agent':
+                if AGENT_MODE == 'production':
+                    analyze_and_trade_production()
+                elif AGENT_MODE == 'agent':
                     analyze_and_trade_agent()
                 else:
                     analyze_and_trade()
@@ -900,6 +949,15 @@ def _send_summary(title):
                 text += f"\n自动结算 {resolved} 条过期预测"
         except Exception as e:
             logger.error(f"预测结算失败: {e}")
+
+        # 0.5 经验日志：回填结果 + 生成反思（TradingAgents 式闭环）
+        try:
+            import experience_log
+            backfilled = experience_log.mark_resolved()
+            reflected = experience_log.reflect_predictions()
+            text += f"\n经验日志: 回填{backfilled}条, 新反思{reflected}条"
+        except Exception as e:
+            logger.error(f"经验日志闭环失败: {e}")
 
         # 1. 保存到知识库
         try:

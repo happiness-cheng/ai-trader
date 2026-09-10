@@ -219,18 +219,18 @@ def _tool_check_market_crash():
 
 
 def _tool_rag_search(query: str, top_k: int = 3):
-    """RAG语义检索历史经验"""
+    """历史经验检索——已迁移到结构化经验日志（experience_log.py）
+    按股票代码规则注入（同股票历史+跨股票教训），不做语义检索"""
     try:
-        from rag_store import get_store
-        store = get_store()
-        results = store.search(query, top_k=top_k)
-        return [
-            {"collection": r['collection'], "document": r['document'][:200],
-             "date": r['metadata'].get('date', '')}
-            for r in results
-        ] if results else {"message": "未找到相关经验"}
+        import experience_log
+        m = re.search(r'\b(\d{6})\b', query or '')
+        code = m.group(1) if m else ''
+        if not code:
+            return {"message": "query 中未包含 6 位股票代码，无法注入经验上下文"}
+        ctx = experience_log.get_past_context(code)
+        return {"experience_context": ctx} if ctx else {"message": "无已验证历史经验"}
     except ImportError:
-        return {"error": "RAG模块未安装"}
+        return {"error": "经验日志模块未安装"}
 
 
 def _tool_send_notification(title: str, content: str):

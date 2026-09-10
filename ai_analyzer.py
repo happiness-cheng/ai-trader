@@ -158,6 +158,14 @@ def analyze_stock(stock_info, indicators, market_overview=None, hot_sectors=None
         except Exception:
             lessons = ''
 
+        # 注入结构化经验日志（同股票历史决策+跨股票教训，替代原向量RAG）
+        try:
+            import experience_log
+            code = str(stock_info.get('code') or stock_info.get('stock_code') or '')
+            experience_ctx = experience_log.get_past_context(code) if code else ''
+        except Exception:
+            experience_ctx = ''
+
         prompt = ANALYSIS_PROMPT.format(
             stock_info=json.dumps(stock_info, ensure_ascii=False, indent=2),
             indicators=json.dumps(indicators, ensure_ascii=False, indent=2),
@@ -169,8 +177,13 @@ def analyze_stock(stock_info, indicators, market_overview=None, hot_sectors=None
             prompt += history
         if lessons:
             prompt += lessons
+        if experience_ctx:
+            prompt += "\n\n" + experience_ctx
 
         text = _call_claude(prompt, max_tokens=4000)
+        if not text:
+            return {"error": "AI API调用失败（超时或5xx错误）"}
+
         result = _parse_json(text)
         logger.info(f"AI分析完成: {result.get('stock_code')} -> {result.get('recommendation')} (置信度{result.get('confidence')})")
 
@@ -186,6 +199,18 @@ def analyze_stock(stock_info, indicators, market_overview=None, hot_sectors=None
             result.get('reasoning', ''),
             result.get('key_signals', []),
         )
+
+        # 本地模型预测（v5回归模型）
+        try:
+            import model_client
+            model_pred = model_client.predict(
+                result.get('stock_name', stock_info.get('name', '')),
+                indicators,
+            )
+            if model_pred:
+                result['model_prediction'] = model_pred
+        except Exception as e:
+            logger.debug(f"模型预测跳过: {e}")
 
         return result
 

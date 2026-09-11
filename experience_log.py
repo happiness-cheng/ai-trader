@@ -256,12 +256,14 @@ def reflect_predictions(limit=None):
 
 
 def _call_llm_reflection(prompt):
-    """反思生成的 LLM 调用——配置优先级：环境变量 > 项目 .env"""
+    """反思生成的 LLM 调用——Anthropic 原生协议（x-api-key + /v1/messages）
+    配置优先级：环境变量 > 项目 .env
+    注：该网关对 Bearer 头的 openai 风格端点有鉴权误报（401），必须用 x-api-key
+    """
     try:
-        from openai import OpenAI
+        import requests
 
         def _load_env():
-            # 环境变量优先（生产）；回退到项目 .env（本地开发）
             env = {k: os.environ[k] for k in
                    ('ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL')
                    if os.environ.get(k)}
@@ -278,16 +280,25 @@ def _call_llm_reflection(prompt):
             return env
 
         env = _load_env()
-        client = OpenAI(
-            api_key=env.get('ANTHROPIC_AUTH_TOKEN', ''),
-            base_url=env.get('ANTHROPIC_BASE_URL', '').rstrip('/') + '/v1',
-        )
         model = re.sub(r'\[.*?\]$', '', env.get('ANTHROPIC_MODEL', '')).strip()
-        resp = client.chat.completions.create(
-            model=model, max_tokens=4000, temperature=0.5,
-            messages=[{'role': 'user', 'content': prompt}],
+        resp = requests.post(
+            env.get('ANTHROPIC_BASE_URL', '').rstrip('/') + '/v1/messages',
+            headers={
+                'x-api-key': env.get('ANTHROPIC_AUTH_TOKEN', ''),
+                'anthropic-version': '2023-06-01',
+            },
+            json={
+                'model': model, 'max_tokens': 4000, 'temperature': 0.5,
+                'messages': [{'role': 'user', 'content': prompt}],
+            },
+            timeout=120,
         )
-        return (resp.choices[0].message.content or '').strip() or None
+        if not resp.ok:
+            logger.warning(f"反思生成 HTTP {resp.status_code}: {resp.text[:200]}")
+            return None
+        blocks = resp.json().get('content', [])
+        text = ''.join(b.get('text', '') for b in blocks if b.get('type') == 'text').strip()
+        return text or None
     except Exception as e:
         logger.warning(f"反思生成失败: {e}")
         return None

@@ -1,0 +1,30 @@
+name: Runtime CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test]"
+      - name: Build
+        run: python -m compileall -q src tests config.py
+      - name: Type check
+        run: python -m mypy
+      - name: Lint
+        run: python -m ruff check src tests
+      - name: Tests
+        run: python -m pytest -W error::ResourceWarning --cov=ai_trader --cov-fail-under=85
+      - name: Runtime dry-run
+        run: python -m ai_trader.runtime --dry-run
+      - name: Deterministic evals
+        run: python -m ai_trader.evals.cli --dataset evals/scenarios/core.json --output evals/reports

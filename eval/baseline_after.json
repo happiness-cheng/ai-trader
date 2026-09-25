@@ -1,0 +1,133 @@
+{
+  "collection": "predictions__diverse_v1",
+  "corpus_size": 975,
+  "常规样本": {
+    "n": 4,
+    "recall@3": 0.25,
+    "mrr": 0.258,
+    "details": [
+      {
+        "id": "E01",
+        "expected": "pred_1",
+        "rank": 1,
+        "recall3": true,
+        "mrr": 1.0,
+        "top1_dist": 0.3515,
+        "top1_register": "forum"
+      },
+      {
+        "id": "E02",
+        "expected": "pred_2",
+        "rank": 159,
+        "recall3": false,
+        "mrr": 0.006,
+        "top1_dist": 0.2136,
+        "top1_register": "forum"
+      },
+      {
+        "id": "E03",
+        "expected": "pred_3",
+        "rank": 124,
+        "recall3": false,
+        "mrr": 0.008,
+        "top1_dist": 0.2872,
+        "top1_register": "forum"
+      },
+      {
+        "id": "E05",
+        "expected": "pred_27",
+        "rank": 54,
+        "recall3": false,
+        "mrr": 0.019,
+        "top1_dist": 0.2644,
+        "top1_register": "forum"
+      }
+    ]
+  },
+  "近邻组样本": {
+    "n": 6,
+    "recall@1": 0.0,
+    "details": [
+      {
+        "id": "E04",
+        "expected": "pred_43",
+        "rank": 196,
+        "recall1": false,
+        "group": "茅台超卖组",
+        "group_member_ranks": {
+          "43": 196,
+          "83": 177,
+          "106": 54,
+          "40": 186
+        },
+        "hit_register": "forum"
+      },
+      {
+        "id": "E06",
+        "expected": "pred_83",
+        "rank": 250,
+        "recall1": false,
+        "group": "茅台超卖组",
+        "group_member_ranks": {
+          "43": 350,
+          "83": 250,
+          "106": 29,
+          "40": 65
+        },
+        "hit_register": "forum"
+      },
+      {
+        "id": "E07",
+        "expected": "pred_106",
+        "rank": 50,
+        "recall1": false,
+        "group": "茅台超卖组",
+        "group_member_ranks": {
+          "43": 218,
+          "83": 159,
+          "106": 50,
+          "40": 185
+        },
+        "hit_register": "forum"
+      },
+      {
+        "id": "E08",
+        "expected": "pred_8",
+        "rank": 67,
+        "recall1": false,
+        "group": "平安力度组",
+        "group_member_ranks": {
+          "8": 67,
+          "72": 72
+        },
+        "hit_register": "forum"
+      },
+      {
+        "id": "E09",
+        "expected": "pred_40",
+        "rank": 253,
+        "recall1": false,
+        "group": "茅台超卖组",
+        "group_member_ranks": {
+          "43": 142,
+          "83": 72,
+          "106": 141,
+          "40": 253
+        },
+        "hit_register": "forum"
+      },
+      {
+        "id": "E10",
+        "expected": "pred_72",
+        "rank": 50,
+        "recall1": false,
+        "group": "平安力度组",
+        "group_member_ranks": {
+          "8": 63,
+          "72": 50
+        },
+        "hit_register": "forum"
+      }
+    ]
+  }
+}

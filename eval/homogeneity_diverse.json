@@ -1,0 +1,16 @@
+{
+  "label": "多样化语料 v1",
+  "n_docs": 975,
+  "mean_sim": 0.691,
+  "p90_sim": 0.815,
+  "max_sim": 0.991,
+  "pairs_over_0.7": 0.857,
+  "clusters_at_0.9": 65,
+  "cluster_top5_sizes": [
+    155,
+    116,
+    108,
+    102,
+    99
+  ]
+}

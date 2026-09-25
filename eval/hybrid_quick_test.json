@@ -1,0 +1,158 @@
+{
+  "bm25": [
+    {
+      "id": "E01",
+      "expected": "pred_1",
+      "rank": 117
+    },
+    {
+      "id": "E02",
+      "expected": "pred_2",
+      "rank": 102
+    },
+    {
+      "id": "E03",
+      "expected": "pred_3",
+      "rank": 57
+    },
+    {
+      "id": "E04",
+      "expected": "pred_43",
+      "rank": 124
+    },
+    {
+      "id": "E05",
+      "expected": "pred_27",
+      "rank": 38
+    },
+    {
+      "id": "E06",
+      "expected": "pred_83",
+      "rank": 85
+    },
+    {
+      "id": "E07",
+      "expected": "pred_106",
+      "rank": 3
+    },
+    {
+      "id": "E08",
+      "expected": "pred_8",
+      "rank": 68
+    },
+    {
+      "id": "E09",
+      "expected": "pred_40",
+      "rank": 15
+    },
+    {
+      "id": "E10",
+      "expected": "pred_72",
+      "rank": 128
+    }
+  ],
+  "dense": [
+    {
+      "id": "E01",
+      "expected": "pred_1",
+      "rank": 26
+    },
+    {
+      "id": "E02",
+      "expected": "pred_2",
+      "rank": 13
+    },
+    {
+      "id": "E03",
+      "expected": "pred_3",
+      "rank": 73
+    },
+    {
+      "id": "E04",
+      "expected": "pred_43",
+      "rank": 97
+    },
+    {
+      "id": "E05",
+      "expected": "pred_27",
+      "rank": 12
+    },
+    {
+      "id": "E06",
+      "expected": "pred_83",
+      "rank": 2
+    },
+    {
+      "id": "E07",
+      "expected": "pred_106",
+      "rank": 36
+    },
+    {
+      "id": "E08",
+      "expected": "pred_8",
+      "rank": 108
+    },
+    {
+      "id": "E09",
+      "expected": "pred_40",
+      "rank": 110
+    },
+    {
+      "id": "E10",
+      "expected": "pred_72",
+      "rank": 6
+    }
+  ],
+  "rrf": [
+    {
+      "id": "E01",
+      "expected": "pred_1",
+      "rank": null
+    },
+    {
+      "id": "E02",
+      "expected": "pred_2",
+      "rank": 24
+    },
+    {
+      "id": "E03",
+      "expected": "pred_3",
+      "rank": null
+    },
+    {
+      "id": "E04",
+      "expected": "pred_43",
+      "rank": null
+    },
+    {
+      "id": "E05",
+      "expected": "pred_27",
+      "rank": 22
+    },
+    {
+      "id": "E06",
+      "expected": "pred_83",
+      "rank": 5
+    },
+    {
+      "id": "E07",
+      "expected": "pred_106",
+      "rank": 10
+    },
+    {
+      "id": "E08",
+      "expected": "pred_8",
+      "rank": null
+    },
+    {
+      "id": "E09",
+      "expected": "pred_40",
+      "rank": 25
+    },
+    {
+      "id": "E10",
+      "expected": "pred_72",
+      "rank": 10
+    }
+  ]
+}

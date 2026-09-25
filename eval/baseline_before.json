@@ -1,0 +1,49 @@
+{
+  "recall@3": 0.0,
+  "mrr": 0.0,
+  "n_cases": 3,
+  "details": [
+    {
+      "id": "E01",
+      "query": "最近有没有那种一直在往上冲、感觉要起飞，现在跟进还不算晚的股票？",
+      "expected": "pred_1",
+      "rank": null,
+      "recall3": false,
+      "top1_dist": 0.5902,
+      "dist_of_expected": null,
+      "top3_ids": [
+        "pred_20",
+        "pred_112",
+        "pred_101"
+      ]
+    },
+    {
+      "id": "E02",
+      "query": "这种跌得比较多、看着有点跌过头的股票，是已经能考虑进场了，还是再等等比较稳？",
+      "expected": "pred_2",
+      "rank": null,
+      "recall3": false,
+      "top1_dist": 0.583,
+      "dist_of_expected": null,
+      "top3_ids": [
+        "pred_129",
+        "pred_112",
+        "pred_42"
+      ]
+    },
+    {
+      "id": "E03",
+      "query": "有只股票最近跌得挺离谱的，好像怎么跌都止不住，这种到底是要止损离场还是先按兵不动？",
+      "expected": "pred_3",
+      "rank": null,
+      "recall3": false,
+      "top1_dist": 0.5561,
+      "dist_of_expected": null,
+      "top3_ids": [
+        "pred_6",
+        "pred_112",
+        "pred_95"
+      ]
+    }
+  ]
+}

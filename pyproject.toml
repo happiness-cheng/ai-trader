@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-trader-runtime"
+version = "0.1.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "SQLAlchemy>=2.0,<3",
+  "fastapi>=0.115,<1",
+  "anthropic>=0.84,<1",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.12,<1",
+  "mypy>=1.16,<2",
+  "httpx>=0.28,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["src", "."]
+
+[tool.coverage.run]
+source = ["ai_trader"]
+branch = true
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src/ai_trader"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100

@@ -51,3 +51,7 @@ MACD_SIGNAL = 9
 RSI_PERIOD = 14
 MA_SHORT = 5
 MA_LONG = 20
+
+# === 飞书 Webhook ===
+# 敏感凭据只从环境变量读取，不得写入源码。
+FEISHU_WEBHOOK = os.environ.get('FEISHU_WEBHOOK', '')

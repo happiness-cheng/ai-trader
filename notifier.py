@@ -12,7 +12,9 @@ import config
 
 logger = logging.getLogger(__name__)
 
-FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "https://open.feishu.cn/open-apis/bot/v2/hook/7a16bfb4-6a0c-4bd7-b277-0f68f4c71c0d")
+FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "") or getattr(config, 'FEISHU_WEBHOOK', '')
+if not FEISHU_WEBHOOK:
+    logger.warning("FEISHU_WEBHOOK 未配置，通知将不会发送")
 
 # 频率限制：两次推送最少间隔5秒
 _last_send_time = 0
@@ -23,14 +25,12 @@ NOTIFICATION_LOG_FILE = os.path.join(config.DATA_DIR, 'notification_log.json')
 
 
 def send(title, content):
-    """发送飞书消息（带频率限制）
-    Args:
-        title: 消息标题
-        content: 消息正文
-    Returns:
-        bool: 是否发送成功
-    """
+    """发送飞书消息（带频率限制）"""
     global _last_send_time
+
+    if not FEISHU_WEBHOOK:
+        logger.debug(f"通知未发送(webhook未配置): {title}")
+        return False
 
     # 频率限制
     now = time.time()
@@ -70,12 +70,9 @@ def send(title, content):
         return False
 
 
-def _can_send(stock_code, risk_type):
-    """检查是否已发送过（同类风险每天最多1次）"""
+def _load_notif_log():
+    """加载通知日志"""
     today = datetime.now().strftime('%Y-%m-%d')
-    key = f"{stock_code}:{risk_type}"
-
-    # 加载日志
     log = {}
     if os.path.exists(NOTIFICATION_LOG_FILE):
         try:
@@ -83,22 +80,33 @@ def _can_send(stock_code, risk_type):
                 log = json.load(f)
         except Exception:
             log = {}
+    return {k: v for k, v in log.items() if v == today}
 
-    # 清理过期条目
-    log = {k: v for k, v in log.items() if v == today}
 
-    if key in log:
-        return False  # 今天已经发过
-
-    # 记录
-    log[key] = today
+def _save_notif_log(log):
+    """保存通知日志"""
     try:
         with open(NOTIFICATION_LOG_FILE, 'w', encoding='utf-8') as f:
             json.dump(log, f, ensure_ascii=False)
     except Exception as e:
         logger.error(f"写入通知日志失败: {e}")
 
-    return True
+
+def _can_send(stock_code, risk_type):
+    """检查是否可以发送（只检查，不记录）"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    key = f"{stock_code}:{risk_type}"
+    log = _load_notif_log()
+    return key not in log
+
+
+def _record_sent(stock_code, risk_type):
+    """记录已发送"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    key = f"{stock_code}:{risk_type}"
+    log = _load_notif_log()
+    log[key] = today
+    _save_notif_log(log)
 
 
 def _get_action_suggestion(sig_type, severity, gain_pct):
@@ -138,6 +146,7 @@ def send_buy_signal(stock_code, stock_name, price, quantity, reason):
             f"**原因**: {reason[:200]}"
         ),
     )
+    _record_sent(stock_code, 'buy_signal')
 
 
 def send_sell_signal(stock_code, stock_name, price, reason):
@@ -152,6 +161,7 @@ def send_sell_signal(stock_code, stock_name, price, reason):
             f"**原因**: {reason[:200]}"
         ),
     )
+    _record_sent(stock_code, 'sell_signal')
 
 
 def send_stop_loss_alert(stock_name, stock_code, buy_price, current_price, change_pct):
@@ -174,6 +184,7 @@ def send_stop_loss_alert(stock_name, stock_code, buy_price, current_price, chang
             f"卖了之后不要急着买回来，等新的信号。"
         ),
     )
+    _record_sent(stock_code, 'stop_loss')
 
 
 def send_take_profit_alert(stock_name, stock_code, buy_price, current_price, change_pct):
@@ -191,6 +202,7 @@ def send_take_profit_alert(stock_name, stock_code, buy_price, current_price, cha
             f"剩余持仓跟踪止损价已上移，继续持有直到触发止损。"
         ),
     )
+    _record_sent(stock_code, 'take_profit')
 
 
 def send_position_alert(position, sig_type, severity, message, current_price, gain_pct):
@@ -211,6 +223,7 @@ def send_position_alert(position, sig_type, severity, message, current_price, ga
             f"**建议操作**: {action}"
         ),
     )
+    _record_sent(position['code'], sig_type)
 
 
 def send_market_alert(crash_level, overview, positions):
@@ -238,6 +251,7 @@ def send_market_alert(crash_level, overview, positions):
         title=f"{icon} 大盘{label}",
         content=actions.get(crash_level, ''),
     )
+    _record_sent('market', f'crash_{crash_level}')
 
 
 def send_daily_report(report_text):

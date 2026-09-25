@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # 环境
 .env
@@ -12,6 +15,22 @@ venv/
 # 日志和数据
 logs/
 data/
+*.db
+evals/reports/
+
+# 模型训练与生成结果（LoRA 权重单目录 500MB+，禁止入库）
+qwen-stock-lora-*/
+finetune_data*/
+colab_upload*.zip
+backtest_results.json
+backtest_chart.png
+full_backtest_results.json
+full_backtest_chart.png
+regen_log.txt
+
+# 工具产物
+.codegraph/
+.ipynb_checkpoints/
 
 # IDE
 .vscode/

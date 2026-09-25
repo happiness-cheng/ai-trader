@@ -329,18 +329,18 @@ async def api_balance():
                 total_mv += mv
                 total_pnl += pnl
 
-        total_assets = 164516.53 + total_pnl  # 初始资金 + 盈亏
-        available = 164516.53 - total_mv  # 总资金 - 已用
+        total_assets = config.TOTAL_CAPITAL + total_pnl  # 初始资金 + 盈亏
+        available = config.TOTAL_CAPITAL - total_mv  # 总资金 - 已用
 
         return {
-            "资金余额": f"{164516.53:.2f}",
+            "资金余额": f"{config.TOTAL_CAPITAL:.2f}",
             "可用金额": f"{max(available, 0):.2f}",
             "总资产": f"{total_assets:.2f}",
             "股票市值": f"{total_mv:.2f}",
             "持仓盈亏": f"{total_pnl:.2f}",
         }
     except Exception as e:
-        return {"资金余额": "164516.53", "可用金额": "31921.12", "总资产": "164532.12", "股票市值": "132611.00"}
+        return {"资金余额": f"{config.TOTAL_CAPITAL:.2f}", "可用金额": "0", "总资产": f"{config.TOTAL_CAPITAL:.2f}", "股票市值": "0"}
 
 
 @app.get("/api/balance/refresh")
@@ -426,9 +426,21 @@ async def api_generate_charts():
     return {"generated": len(paths), "files": [os.path.basename(p) for p in paths]}
 
 
+DASHBOARD_TOKEN = os.environ.get("DASHBOARD_TOKEN", "")
+
+
+def _check_token(req):
+    """验证写操作 token"""
+    if DASHBOARD_TOKEN and req.get('token') != DASHBOARD_TOKEN:
+        return False
+    return True
+
+
 @app.post("/api/positions/add")
 async def api_add_position(req: dict):
-    """添加持仓（手动录入）"""
+    """添加持仓（需要 token）"""
+    if not _check_token(req):
+        return {"error": "unauthorized"}
     strategy.save_position(
         req.get('code', ''), req.get('name', ''),
         req.get('quantity', 0), req.get('price', 0))
@@ -437,7 +449,9 @@ async def api_add_position(req: dict):
 
 @app.post("/api/positions/remove")
 async def api_remove_position(req: dict):
-    """移除持仓（卖出后）"""
+    """移除持仓（需要 token）"""
+    if not _check_token(req):
+        return {"error": "unauthorized"}
     strategy.remove_position(req.get('code', ''), req.get('price', 0))
     return {"ok": True}
 

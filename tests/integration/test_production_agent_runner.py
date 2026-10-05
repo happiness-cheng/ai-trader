@@ -31,7 +31,7 @@ def test_persistent_runner_executes_structured_tool_and_completes(tmp_path):
         ToolDefinition(
             name="get_quote", description="fixture quote", input_model=EmptyInput,
             output_model=QuoteOutput,
-            handler=lambda _data: QuoteOutput(price=Decimal("100")),
+            handler=lambda _data: QuoteOutput(price=Decimal(100)),
             permission="market:read",
         )
     )
@@ -66,7 +66,7 @@ def test_runner_detects_dead_loop(tmp_path):
         ToolDefinition(
             name="get_quote", description="fixture", input_model=EmptyInput,
             output_model=QuoteOutput,
-            handler=lambda _data: QuoteOutput(price=Decimal("100")),
+            handler=lambda _data: QuoteOutput(price=Decimal(100)),
             permission="market:read",
         )
     )

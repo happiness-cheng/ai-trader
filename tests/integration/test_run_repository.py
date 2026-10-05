@@ -5,7 +5,6 @@ import pytest
 from ai_trader.agents.state import AgentRun, EventType, RunState
 from ai_trader.persistence.runs import DuplicateRun, SqlRunRepository, VersionConflict
 
-
 NOW = datetime(2026, 7, 11, 3, 0, tzinfo=UTC)
 
 

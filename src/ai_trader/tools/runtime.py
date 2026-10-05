@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter
-from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -58,12 +57,8 @@ class ToolResult(RuntimeModel):
     error_message: str = ""
 
 
-InputT = TypeVar("InputT", bound=BaseModel)
-OutputT = TypeVar("OutputT", bound=BaseModel)
-
-
 @dataclass(frozen=True)
-class ToolDefinition(Generic[InputT, OutputT]):
+class ToolDefinition[InputT: BaseModel, OutputT: BaseModel]:
     name: str
     description: str
     input_model: type[InputT]
@@ -80,7 +75,9 @@ class ToolRuntime:
     def __init__(self) -> None:
         self._definitions: dict[str, ToolDefinition[BaseModel, BaseModel]] = {}
 
-    def register(self, definition: ToolDefinition[InputT, OutputT]) -> None:
+    def register[InputT: BaseModel, OutputT: BaseModel](
+        self, definition: ToolDefinition[InputT, OutputT]
+    ) -> None:
         if definition.name in self._definitions:
             raise ValueError(f"duplicate tool: {definition.name}")
         if definition.timeout_seconds <= 0:
@@ -134,7 +131,7 @@ class ToolRuntime:
         except TimeoutError:
             future.cancel()
             return self._error(call, started, ToolErrorCode.TIMEOUT, "tool timed out")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - handler 可抛任意异常，必须转成结构化结果
             return self._error(call, started, ToolErrorCode.HANDLER_ERROR, str(exc))
         finally:
             executor.shutdown(wait=False, cancel_futures=True)

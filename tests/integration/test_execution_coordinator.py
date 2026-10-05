@@ -10,20 +10,19 @@ from ai_trader.execution.paper import PaperBrokerAdapter
 from ai_trader.persistence.trading import SqlTradingRepository
 from ai_trader.risk.gate import RiskContext, RiskOutcome
 
-
 NOW = datetime(2026, 7, 11, 4, 0, tzinfo=UTC)
 
 
 def make_context():
     proposal = TradeProposal(
         proposal_id="proposal-001", symbol="600519", side=OrderSide.BUY,
-        quantity=100, limit_price=Decimal("100"), stop_loss=Decimal("95"),
-        take_profit=Decimal("115"), evidence_refs=("tool-1",), created_at=NOW,
+        quantity=100, limit_price=Decimal(100), stop_loss=Decimal(95),
+        take_profit=Decimal(115), evidence_refs=("tool-1",), created_at=NOW,
         expires_at=NOW + timedelta(minutes=5),
     )
     return RiskContext(
-        proposal=proposal, quote=Quote(symbol="600519", price=Decimal("100"), as_of=NOW),
-        account=AccountSnapshot(total_equity=Decimal("100000"), available_cash=Decimal("50000")),
+        proposal=proposal, quote=Quote(symbol="600519", price=Decimal(100), as_of=NOW),
+        account=AccountSnapshot(total_equity=Decimal(100000), available_cash=Decimal(50000)),
         positions=(), open_order_symbols=frozenset(), trading_enabled=True, now=NOW,
     )
 

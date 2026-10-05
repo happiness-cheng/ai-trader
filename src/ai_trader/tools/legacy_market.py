@@ -59,27 +59,27 @@ def create_legacy_market_runtime(
 
     definitions: tuple[Any, ...] = (
         ToolDefinition(
-            name="get_quote", description="获取 A 股实时行情",
+            name="get_quote", description="当需要获取 A 股实时行情的时候使用",
             input_model=_StockInput, output_model=_ObjectOutput, handler=quote,
             permission="market:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),
         ToolDefinition(
-            name="get_market_overview", description="获取大盘概况",
+            name="get_market_overview", description="当需要获取大盘概况的时候使用",
             input_model=_NoInput, output_model=_ObjectOutput, handler=overview,
             permission="market:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),
         ToolDefinition(
-            name="get_technical_indicators", description="计算股票技术指标",
+            name="get_technical_indicators", description="当需要计算股票技术指标的时候使用",
             input_model=_StockInput, output_model=_ObjectOutput, handler=indicators,
             permission="market:read", risk=ToolRisk.LOW, effect=ToolEffect.COMPUTE,
         ),
         ToolDefinition(
-            name="get_positions", description="读取当前持仓",
+            name="get_positions", description="当需要读取当前持仓的时候使用",
             input_model=_NoInput, output_model=_ListOutput, handler=positions,
             permission="portfolio:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),
         ToolDefinition(
-            name="rag_search", description="检索已验证的历史经验",
+            name="rag_search", description="当需要检索已验证的历史经验的时候使用",
             input_model=_RagInput, output_model=_ListOutput, handler=rag_search,
             permission="memory:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),

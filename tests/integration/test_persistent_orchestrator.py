@@ -7,7 +7,6 @@ from ai_trader.agents.orchestrator import PersistentOrchestrator
 from ai_trader.agents.state import EventType, InvalidTransition, RunState
 from ai_trader.persistence.runs import SqlRunRepository
 
-
 NOW = datetime(2026, 7, 11, 3, 0, tzinfo=UTC)
 
 

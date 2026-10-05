@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from ai_trader.tools.legacy_market import create_legacy_market_runtime
-from ai_trader.tools.runtime import ToolCall, ToolExecutionContext, ToolErrorCode
+from ai_trader.tools.runtime import ToolCall, ToolErrorCode, ToolExecutionContext
 
 
 def test_legacy_modules_are_lazy_and_only_read_tools_are_exposed():

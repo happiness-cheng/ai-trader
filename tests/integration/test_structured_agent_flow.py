@@ -38,7 +38,7 @@ def test_structured_model_call_is_validated_and_grounded():
             description="Get a fixture quote",
             input_model=QuoteInput,
             output_model=QuoteOutput,
-            handler=lambda data: QuoteOutput(symbol=data.symbol, price=Decimal("100")),
+            handler=lambda data: QuoteOutput(symbol=data.symbol, price=Decimal(100)),
             permission="market:read",
             risk=ToolRisk.LOW,
             effect=ToolEffect.READ,

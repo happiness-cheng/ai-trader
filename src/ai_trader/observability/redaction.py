@@ -3,7 +3,6 @@
 import re
 from collections.abc import Mapping
 
-
 _SENSITIVE_KEY = re.compile(
     r"(?:authorization|api[_-]?key|token|password|secret|webhook)", re.IGNORECASE
 )

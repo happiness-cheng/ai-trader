@@ -2,7 +2,19 @@
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, Integer, MetaData, String, Table, create_engine, func, insert, select, update
+from sqlalchemy import (
+    JSON,
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    func,
+    insert,
+    select,
+    update,
+)
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.exc import IntegrityError
 

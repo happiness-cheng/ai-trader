@@ -10,15 +10,14 @@ from ai_trader.persistence.trading import (
     SqlTradingRepository,
 )
 
-
 NOW = datetime(2026, 7, 11, 4, 0, tzinfo=UTC)
 
 
 def proposal():
     return TradeProposal(
         proposal_id="proposal-001", symbol="600519", side=OrderSide.BUY,
-        quantity=100, limit_price=Decimal("100"), stop_loss=Decimal("95"),
-        take_profit=Decimal("115"), evidence_refs=("tool-1",),
+        quantity=100, limit_price=Decimal(100), stop_loss=Decimal(95),
+        take_profit=Decimal(115), evidence_refs=("tool-1",),
         created_at=NOW, expires_at=NOW + timedelta(minutes=5),
     )
 
@@ -61,7 +60,7 @@ def test_order_round_trip_by_proposal(repository):
     repository.reserve_order("proposal-001", "reservation-001", NOW)
     order = Order(
         order_id="paper-001", proposal_id="proposal-001", symbol="600519",
-        side=OrderSide.BUY, quantity=100, price=Decimal("100"),
+        side=OrderSide.BUY, quantity=100, price=Decimal(100),
         status=OrderStatus.FILLED, created_at=NOW,
     )
     repository.save_order(order)

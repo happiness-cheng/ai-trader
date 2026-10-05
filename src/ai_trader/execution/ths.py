@@ -29,7 +29,7 @@ class _Trader(Protocol):
 
 def _legacy_factory() -> _Trader:
     module = import_module("ths_trader")
-    constructor = cast(Callable[[], object], getattr(module, "THSTrader"))
+    constructor = cast(Callable[[], object], getattr(module, "THSTrader"))  # noqa: B009
     return cast(_Trader, constructor())
 
 

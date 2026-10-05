@@ -4,7 +4,13 @@ from decimal import Decimal
 
 import pytest
 
-from ai_trader.domain.trading import OrderSide, OrderStatus, RiskDecision, RiskOutcome, TradeProposal
+from ai_trader.domain.trading import (
+    OrderSide,
+    OrderStatus,
+    RiskDecision,
+    RiskOutcome,
+    TradeProposal,
+)
 from ai_trader.execution.ths import LiveExecutionDisabled, ThsBrokerAdapter
 from ai_trader.settings import Settings
 
@@ -13,8 +19,8 @@ def proposal():
     now = datetime.now(UTC)
     return TradeProposal(
         proposal_id="proposal-001", symbol="600519", side=OrderSide.BUY,
-        quantity=100, limit_price=Decimal("100"), stop_loss=Decimal("95"),
-        take_profit=Decimal("115"), evidence_refs=("tool-1",), created_at=now,
+        quantity=100, limit_price=Decimal(100), stop_loss=Decimal(95),
+        take_profit=Decimal(115), evidence_refs=("tool-1",), created_at=now,
         expires_at=now + timedelta(minutes=2),
     )
 

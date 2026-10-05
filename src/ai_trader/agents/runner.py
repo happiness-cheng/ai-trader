@@ -19,7 +19,11 @@ class AgentRunFailed(RuntimeError):
     pass
 
 
-def _detect_loop(turn_signatures: list[frozenset], *, window: int = 3) -> bool:
+# 一轮工具调用的签名：工具名 + 排序后的参数，用于死循环检测
+TurnSignature = frozenset[tuple[str, tuple[tuple[str, object], ...]]]
+
+
+def _detect_loop(turn_signatures: list[TurnSignature], *, window: int = 3) -> bool:
     """检测死循环：连续 window 次完全相同的工具调用集合"""
     if len(turn_signatures) < window:
         return False
@@ -64,7 +68,7 @@ class ProductionAgentRunner:
         input_tokens = 0
         output_tokens = 0
         latency_ms = 0.0
-        turn_signatures: list[frozenset] = []
+        turn_signatures: list[TurnSignature] = []
 
         for turn in range(1, self._max_turns + 1):
             try:

@@ -3,8 +3,8 @@
 import argparse
 from datetime import UTC, datetime
 from decimal import Decimal
-from tempfile import TemporaryDirectory
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from pydantic import BaseModel
 
@@ -12,8 +12,13 @@ from ai_trader.agents.orchestrator import PersistentOrchestrator
 from ai_trader.agents.runner import ProductionAgentRunner
 from ai_trader.models.anthropic_provider import AnthropicProvider
 from ai_trader.models.fake import FakeModelProvider
-from ai_trader.models.gateway import ModelGateway, ModelResponse, ModelToolCall, ModelUsage
-from ai_trader.models.gateway import ModelRequest
+from ai_trader.models.gateway import (
+    ModelGateway,
+    ModelRequest,
+    ModelResponse,
+    ModelToolCall,
+    ModelUsage,
+)
 from ai_trader.persistence.runs import SqlRunRepository
 from ai_trader.settings import Settings
 from ai_trader.tools.legacy_market import create_legacy_market_runtime
@@ -73,7 +78,7 @@ def run_dry() -> int:
             description="fixture quote",
             input_model=_NoInput,
             output_model=_QuoteOutput,
-            handler=lambda _data: _QuoteOutput(price=Decimal("100")),
+            handler=lambda _data: _QuoteOutput(price=Decimal(100)),
             permission="market:read",
         )
     )

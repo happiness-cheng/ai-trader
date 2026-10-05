@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 from pydantic import BaseModel, Field
 
+from ai_trader.agents.orchestrator import PersistentOrchestrator
 from ai_trader.domain.trading import (
     AccountSnapshot,
     OrderSide,
@@ -17,10 +18,9 @@ from ai_trader.domain.trading import (
     RiskOutcome,
     TradeProposal,
 )
-from ai_trader.execution.paper import PaperBrokerAdapter
 from ai_trader.evals.loader import load_dataset
 from ai_trader.evals.runner import ExpectedTraceExecutor, run_dataset
-from ai_trader.agents.orchestrator import PersistentOrchestrator
+from ai_trader.execution.paper import PaperBrokerAdapter
 from ai_trader.models.fake import FakeModelProvider
 from ai_trader.models.gateway import (
     ModelGateway,
@@ -29,8 +29,8 @@ from ai_trader.models.gateway import (
     ModelToolCall,
     ModelUsage,
 )
-from ai_trader.risk.gate import RiskContext, RiskGate
 from ai_trader.persistence.runs import SqlRunRepository
+from ai_trader.risk.gate import RiskContext, RiskGate
 from ai_trader.tools.runtime import (
     ToolCall,
     ToolDefinition,
@@ -39,7 +39,6 @@ from ai_trader.tools.runtime import (
     ToolRisk,
     ToolRuntime,
 )
-
 
 DEMO_TIME = datetime(2026, 7, 11, 2, 0, tzinfo=UTC)
 
@@ -50,20 +49,20 @@ def build_demo_context() -> RiskContext:
         symbol="600519",
         side=OrderSide.BUY,
         quantity=100,
-        limit_price=Decimal("100"),
-        stop_loss=Decimal("95"),
-        take_profit=Decimal("115"),
+        limit_price=Decimal(100),
+        stop_loss=Decimal(95),
+        take_profit=Decimal(115),
         evidence_refs=("fixture-quote-001", "fixture-signal-001"),
         created_at=DEMO_TIME - timedelta(seconds=5),
         expires_at=DEMO_TIME + timedelta(minutes=2),
     )
     return RiskContext(
         proposal=proposal,
-        quote=Quote(symbol="600519", price=Decimal("100"), as_of=DEMO_TIME),
+        quote=Quote(symbol="600519", price=Decimal(100), as_of=DEMO_TIME),
         account=AccountSnapshot(
-            total_equity=Decimal("100000"),
-            available_cash=Decimal("50000"),
-            daily_pnl=Decimal("0"),
+            total_equity=Decimal(100000),
+            available_cash=Decimal(50000),
+            daily_pnl=Decimal(0),
         ),
         positions=(),
         open_order_symbols=frozenset(),
@@ -113,7 +112,7 @@ def run_structured_agent_demo() -> int:
             input_model=_QuoteInput,
             output_model=_QuoteOutput,
             handler=lambda data: _QuoteOutput(
-                symbol=data.symbol, price=Decimal("100")
+                symbol=data.symbol, price=Decimal(100)
             ),
             permission="market:read",
             risk=ToolRisk.LOW,

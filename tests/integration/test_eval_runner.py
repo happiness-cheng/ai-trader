@@ -1,10 +1,10 @@
-from ai_trader.evals.loader import load_dataset
+from ai_trader.agents.runner import RunnerResult
 from ai_trader.evals.cli import main as eval_main
 from ai_trader.evals.contracts import EvalObservation
+from ai_trader.evals.loader import load_dataset
 from ai_trader.evals.reporting import render_json, render_markdown
 from ai_trader.evals.runner import ExpectedTraceExecutor, run_dataset
 from ai_trader.evals.trace_executor import AgentTraceScenarioExecutor
-from ai_trader.agents.runner import RunnerResult
 
 
 def test_core_contract_baseline_is_deterministic_and_complete():

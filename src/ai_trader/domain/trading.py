@@ -60,7 +60,7 @@ class Position(DomainModel):
 class AccountSnapshot(DomainModel):
     total_equity: Decimal = Field(gt=0)
     available_cash: Decimal = Field(ge=0)
-    daily_pnl: Decimal = Decimal("0")
+    daily_pnl: Decimal = Decimal(0)
 
 
 class TradeProposal(DomainModel):

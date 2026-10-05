@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,7 +9,6 @@ from ai_trader.execution.coordinator import ExecutionCoordinator
 from ai_trader.execution.paper import PaperBrokerAdapter
 from ai_trader.persistence.runs import SqlRunRepository
 from ai_trader.persistence.trading import SqlTradingRepository
-
 
 NOW = datetime(2026, 7, 11, 4, 0, tzinfo=UTC)
 

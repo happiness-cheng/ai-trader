@@ -33,7 +33,7 @@ def test_valid_trade_proposal():
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("quantity", 0), ("quantity", 50), ("limit_price", Decimal("0"))],
+    [("quantity", 0), ("quantity", 50), ("limit_price", Decimal(0))],
 )
 def test_invalid_trade_proposal(field, value):
     with pytest.raises(ValidationError):
@@ -51,7 +51,7 @@ def test_expired_trade_proposal_is_observable():
 
 def test_naive_timestamp_is_rejected():
     with pytest.raises(ValidationError):
-        make_proposal(created_at=datetime.now())
+        make_proposal(created_at=datetime.now())  # noqa: DTZ005 - 本用例就是要验证 naive 时间被拒
 
 
 def test_sell_quantity_may_be_an_odd_lot():

@@ -112,7 +112,7 @@ class ModelGateway:
                     if exc.retryable:
                         continue
                     break
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - 未知 provider 异常需记录并降级到下一个
                     errors.append(f"{provider.name}:unknown:{str(exc)[:200]}")
                     break
 

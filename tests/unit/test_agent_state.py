@@ -10,7 +10,6 @@ from ai_trader.agents.state import (
     transition,
 )
 
-
 NOW = datetime(2026, 7, 11, 3, 0, tzinfo=UTC)
 
 
@@ -59,5 +58,6 @@ def test_transition_rejects_time_moving_backwards():
 
 
 def test_run_rejects_naive_timestamp():
+    naive = datetime.now()  # noqa: DTZ005 - 本用例就是要验证 naive 时间被拒
     with pytest.raises(ValidationError):
-        AgentRun.model_validate(make_run().model_dump() | {"updated_at": datetime.now()})
+        AgentRun.model_validate(make_run().model_dump() | {"updated_at": naive})

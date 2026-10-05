@@ -45,3 +45,6 @@ CLAUDE.md
 LEARNING_PLAN.md
 PROJECTS_AND_LEARNING.md
 benchmark_*.json
+
+# 个人学习笔记（含自评与面试准备框架，不随仓库发布）
+docs/lessons/

@@ -36,6 +36,9 @@ class PersistentOrchestrator:
     def start(self, run_id: str) -> AgentRun:
         return self.transition(run_id, RunState.PLANNING)
 
+    def get_run(self, run_id: str) -> AgentRun:
+        return self._repository.get(run_id)
+
     def transition(
         self,
         run_id: str,

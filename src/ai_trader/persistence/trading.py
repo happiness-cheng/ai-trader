@@ -128,12 +128,13 @@ class SqlTradingRepository:
                 .where(_approvals.c.proposal_id == proposal_id)
                 .order_by(_approvals.c.created_at.desc())
             ).mappings().all()
+        # 同一提案一旦拒绝便不可复活；相同时间戳不能依赖数据库的不确定排序。
+        if any(row['approved'] == 'false' for row in rows):
+            return None
         for row in rows:
             approval = self._approval_from_row(row)
             if approval.approved and now < approval.expires_at:
                 return approval
-            if not approval.approved:
-                return None
         return None
 
     def reserve_order(self, proposal_id: str, reservation_id: str, now: datetime) -> None:

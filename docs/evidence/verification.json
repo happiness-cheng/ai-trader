@@ -1,0 +1,125 @@
+{
+  "verified_at": "2026-10-15",
+  "environment": "Windows / CPython 3.12.15",
+  "scope": "local Paper/fixture runtime; no live broker, online SLA or profitability result",
+  "commands": {
+    "compile": {
+      "command": [
+        "python",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "tests",
+        "config.py"
+      ],
+      "exit_code": 0
+    },
+    "isolation": {
+      "command": [
+        "python",
+        "-X",
+        "utf8",
+        "-m",
+        "ai_trader.offline_tests",
+        "--verify-isolation"
+      ],
+      "exit_code": 0,
+      "output": "{\"isolation\": \"PASS\", \"original_env\": \"empty_read_only\", \"working_directory\": \"temporary\", \"model_credentials\": \"empty\", \"external_network\": \"blocked_in_process\"}"
+    },
+    "normal": {
+      "command": [
+        "python",
+        "-X",
+        "utf8",
+        "-m",
+        "ai_trader.paper_demo"
+      ],
+      "exit_code": 0
+    },
+    "response_loss": {
+      "command": [
+        "python",
+        "-X",
+        "utf8",
+        "-m",
+        "ai_trader.paper_demo",
+        "--response-loss"
+      ],
+      "exit_code": 0
+    },
+    "dry_run": {
+      "command": [
+        "python",
+        "-X",
+        "utf8",
+        "-m",
+        "ai_trader.runtime",
+        "--dry-run"
+      ],
+      "exit_code": 0
+    },
+    "wheel_build": {
+      "command": [
+        "uv",
+        "build",
+        "--wheel",
+        "--offline",
+        "--python",
+        "python",
+        "--out-dir",
+        "<artifact-path>"
+      ],
+      "exit_code": 0
+    },
+    "wheel_check": {
+      "command": [
+        "python",
+        "scripts/check_wheel.py",
+        "<artifact-path>"
+      ],
+      "exit_code": 0,
+      "output": "PASS: 51 source files match; no business state; SHA256=e64c0615883babf960dda46a5a21e879e82d4888bc593c1665fd01aa435a31e5"
+    }
+  },
+  "full_tests": {
+    "command": "python -X utf8 -m ai_trader.offline_tests -W error::ResourceWarning --cov=ai_trader --cov-fail-under=85 -q --tb=short",
+    "passed": 228,
+    "coverage_percent": 87.43,
+    "required_percent": 85,
+    "exit_code": 0,
+    "warning": "entry package imported before coverage measurement; not suppressed"
+  },
+  "typecheck": {
+    "command": "python -m mypy",
+    "source_files": 51,
+    "exit_code": 0
+  },
+  "lint": {
+    "commands": [
+      "python -m ruff check src tests --extend-ignore I001,RUF100",
+      "python -m ruff check src/ai_trader/paper_service.py src/ai_trader/state_health.py src/ai_trader/state_backup.py"
+    ],
+    "exit_code": 0
+  },
+  "wheel_probe": {
+    "command": "python -I -X utf8 <verification-wheel-probe.py>",
+    "artifact": "wheel-probe.json",
+    "runtime_from_wheel": true,
+    "dependencies": "installed environment"
+  },
+  "build_tool_note": "verification environment has no pip; initial pip-wheel attempt failed, then cached offline uv build succeeded; GitHub setup-python supplies pip",
+  "new_online_generation_requests": 0,
+  "skipped": [
+    "live LLM trading quality",
+    "live broker",
+    "remote multi-user deployment",
+    "production SLA"
+  ],
+  "clean_staged_tree": {
+    "source": "git checkout-index export; no unstaged/untracked project files",
+    "passed": 228,
+    "exit_code": 0,
+    "frozen_corpus_documents_verified": null
+  }
+}

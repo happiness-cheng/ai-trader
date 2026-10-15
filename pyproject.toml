@@ -11,15 +11,19 @@ dependencies = [
   "pydantic-settings>=2.7,<3",
   "SQLAlchemy>=2.0,<3",
   "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
   "anthropic>=0.84,<1",
 ]
 
 [project.optional-dependencies]
+mcp = ["mcp==1.30.0"]
+memory = ["chromadb==1.5.9"]
 test = [
   "pytest>=8.3,<9",
   "pytest-cov>=6,<7",
   "ruff>=0.12,<1",
   "mypy>=1.16,<2",
+  "types-jsonschema>=4.26,<5",
   "httpx>=0.28,<1",
 ]
 

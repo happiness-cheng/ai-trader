@@ -4,6 +4,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from enum import Enum
+from threading import BoundedSemaphore
 from time import perf_counter
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -28,6 +29,7 @@ class ToolErrorCode(str, Enum):
     PERMISSION_DENIED = "permission_denied"
     APPROVAL_REQUIRED = "approval_required"
     TIMEOUT = "timeout"
+    CAPACITY_UNAVAILABLE = "capacity_unavailable"
     HANDLER_ERROR = "handler_error"
     OUTPUT_VALIDATION_ERROR = "output_validation_error"
 
@@ -69,6 +71,11 @@ class ToolDefinition[InputT: BaseModel, OutputT: BaseModel]:
     effect: ToolEffect = ToolEffect.READ
     timeout_seconds: float = 10.0
     requires_approval: bool = False
+
+
+# 返回超时不表示handler结束；不同runtime实例共用进程容量，避免重建绕过。
+MAX_INFLIGHT_TOOLS = 4
+_slots = BoundedSemaphore(MAX_INFLIGHT_TOOLS)
 
 
 class ToolRuntime:
@@ -124,8 +131,21 @@ class ToolRuntime:
                 call, started, ToolErrorCode.VALIDATION_ERROR, str(exc)
             )
 
-        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-tool")
-        future = executor.submit(definition.handler, parsed_input)
+        if not _slots.acquire(blocking=False):
+            return self._error(
+                call, started, ToolErrorCode.CAPACITY_UNAVAILABLE, "tool capacity unavailable"
+            )
+        executor = None
+        try:
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-tool")
+            future = executor.submit(definition.handler, parsed_input)
+        except Exception:  # noqa: BLE001 - 提交失败必须归还槽，不能遗留不可恢复容量。
+            _slots.release()
+            if executor is not None:
+                executor.shutdown(wait=False, cancel_futures=True)
+            return self._error(call, started, ToolErrorCode.HANDLER_ERROR, "tool execution unavailable")
+        # 只有真正完成/未开始即取消才归还；请求返回TIMEOUT时仍占容量。
+        future.add_done_callback(lambda _future: _slots.release())
         try:
             raw_output = future.result(timeout=definition.timeout_seconds)
         except TimeoutError:

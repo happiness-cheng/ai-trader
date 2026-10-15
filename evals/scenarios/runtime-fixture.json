@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "dataset": "actual-runtime-fixture-v1",
+  "scenarios": [
+    {
+      "scenario_id": "quote",
+      "category": "runtime-fixture",
+      "prompt": "quote",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {
+        "get_quote": {
+          "symbol": "600519"
+        }
+      },
+      "expected_outcome": "succeeded",
+      "required_evidence": [
+        "get_quote"
+      ],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "invalid_argument",
+      "category": "runtime-fixture",
+      "prompt": "invalid_argument",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {},
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "unknown_tool",
+      "category": "runtime-fixture",
+      "prompt": "unknown_tool",
+      "required_tools": [
+        "missing"
+      ],
+      "expected_arguments": {},
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "permission_denied",
+      "category": "runtime-fixture",
+      "prompt": "permission_denied",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {
+        "get_quote": {
+          "symbol": "600519"
+        }
+      },
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "tool_error",
+      "category": "runtime-fixture",
+      "prompt": "tool_error",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {
+        "get_quote": {
+          "symbol": "600519"
+        }
+      },
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "loop",
+      "category": "runtime-fixture",
+      "prompt": "loop",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {
+        "get_quote": {
+          "symbol": "600519"
+        }
+      },
+      "expected_outcome": "failed",
+      "required_evidence": [
+        "get_quote"
+      ],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "token_budget",
+      "category": "runtime-fixture",
+      "prompt": "token_budget",
+      "required_tools": [],
+      "expected_arguments": {},
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "max_turns",
+      "category": "runtime-fixture",
+      "prompt": "max_turns",
+      "required_tools": [
+        "get_quote"
+      ],
+      "expected_arguments": {
+        "get_quote": {
+          "symbol": "600519"
+        }
+      },
+      "expected_outcome": "failed",
+      "required_evidence": [
+        "get_quote"
+      ],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "provider_error",
+      "category": "runtime-fixture",
+      "prompt": "provider_error",
+      "required_tools": [],
+      "forbidden_tools": ["get_quote"],
+      "expected_arguments": {},
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    },
+    {
+      "scenario_id": "wall_clock_budget",
+      "category": "runtime-fixture",
+      "prompt": "wall_clock_budget",
+      "required_tools": [],
+      "forbidden_tools": ["get_quote"],
+      "expected_arguments": {},
+      "expected_outcome": "failed",
+      "required_evidence": [],
+      "max_steps": 8
+    }
+  ]
+}

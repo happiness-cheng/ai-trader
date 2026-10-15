@@ -30,6 +30,7 @@ class ModelUsage(GatewayModel):
 
 class ModelRequest(GatewayModel):
     model: str = Field(min_length=1)
+    system: str = ""
     messages: tuple[dict[str, object], ...] = Field(min_length=1)
     tools: tuple[dict[str, object], ...] = ()
     max_tokens: int = Field(default=2000, gt=0, le=100_000)

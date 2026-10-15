@@ -4,13 +4,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_trader.agents.orchestrator import PersistentOrchestrator
-from ai_trader.agents.state import InvalidTransition
+from ai_trader.agents.runner import AgentRunFailed
+from ai_trader.agents.state import InvalidTransition, RunState
 from ai_trader.domain.trading import AccountSnapshot, Position, Quote, TradeProposal
 from ai_trader.execution.coordinator import ExecutionCoordinator, ExecutionUnknown
+from ai_trader.execution.workflow import TradingWorkflow, WorkflowConflict
 from ai_trader.persistence.runs import RunNotFound, SqlRunRepository, VersionConflict
 from ai_trader.persistence.trading import TradingRecordNotFound
 from ai_trader.risk.gate import RiskContext
@@ -22,6 +25,7 @@ class ApiDependencies:
     run_repository: SqlRunRepository
     execution_coordinator: ExecutionCoordinator
     eval_summary: Callable[[], dict[str, object]] | None = None
+    workflow: TradingWorkflow | None = None
 
 
 class ApiModel(BaseModel):
@@ -70,6 +74,23 @@ def _reviewer(value: str | None) -> str:
 def create_app(dependencies: ApiDependencies) -> FastAPI:
     app = FastAPI(title="AI Trader Agent Runtime", version="0.1.0")
 
+    @app.exception_handler(WorkflowConflict)
+    async def workflow_conflict(_request: Request, exc: WorkflowConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={'detail': str(exc)})
+
+    @app.exception_handler(AgentRunFailed)
+    async def analysis_failed(_request: Request, exc: AgentRunFailed) -> JSONResponse:
+        return JSONResponse(status_code=502, content={'detail': str(exc)})
+
+    @app.exception_handler(RunNotFound)
+    async def missing_run(_request: Request, _exc: RunNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={'detail': 'run not found'})
+
+    def workflow() -> TradingWorkflow:
+        if dependencies.workflow is None:
+            raise HTTPException(status_code=503, detail='Paper workflow not configured')
+        return dependencies.workflow
+
     @app.get("/health")
     def health() -> dict[str, object]:
         return {"status": "ok", "live_execution": False}
@@ -101,6 +122,10 @@ def create_app(dependencies: ApiDependencies) -> FastAPI:
     @app.post("/runs/{run_id}/cancel")
     def cancel_run(run_id: str, request: CancelRunRequest) -> dict[str, object]:
         try:
+            if dependencies.workflow is not None and dependencies.run_repository.get(run_id).state in {
+                RunState.EXECUTING, RunState.VERIFYING,
+            }:
+                raise HTTPException(status_code=409, detail='execution started; reconciliation required')
             return dependencies.orchestrator.cancel(run_id, request.reason).model_dump(
                 mode="json"
             )
@@ -111,6 +136,8 @@ def create_app(dependencies: ApiDependencies) -> FastAPI:
 
     @app.post("/proposals", status_code=status.HTTP_201_CREATED)
     def submit_proposal(request: ProposalSubmission) -> dict[str, object]:
+        if dependencies.workflow is not None:
+            raise HTTPException(status_code=409, detail='use run-scoped workflow endpoints')
         decision = dependencies.execution_coordinator.submit_proposal(
             request.to_context()
         )
@@ -121,6 +148,8 @@ def create_app(dependencies: ApiDependencies) -> FastAPI:
         proposal_id: str,
         x_reviewer_id: str | None = Header(default=None, alias="X-Reviewer-Id"),
     ) -> dict[str, object]:
+        if dependencies.workflow is not None:
+            raise HTTPException(status_code=409, detail='use run-scoped workflow endpoints')
         try:
             approval = dependencies.execution_coordinator.approve(
                 proposal_id, _reviewer(x_reviewer_id)
@@ -137,6 +166,8 @@ def create_app(dependencies: ApiDependencies) -> FastAPI:
         request: RejectRequest,
         x_reviewer_id: str | None = Header(default=None, alias="X-Reviewer-Id"),
     ) -> dict[str, object]:
+        if dependencies.workflow is not None:
+            raise HTTPException(status_code=409, detail='use run-scoped workflow endpoints')
         try:
             approval = dependencies.execution_coordinator.reject(
                 proposal_id, _reviewer(x_reviewer_id), request.reason
@@ -144,5 +175,45 @@ def create_app(dependencies: ApiDependencies) -> FastAPI:
             return approval.model_dump(mode="json")
         except TradingRecordNotFound as exc:
             raise HTTPException(status_code=404, detail="proposal not found") from exc
+
+    @app.post('/runs/{run_id}/analyze')
+    def analyze_run(run_id: str) -> dict[str, object]:
+        run = dependencies.run_repository.get(run_id)
+        if run.state is not RunState.CREATED:
+            raise WorkflowConflict('analysis requires a created run')
+        result = workflow().analyze(run.goal, run_id=run_id)
+        return {'run': result.run.model_dump(mode='json'),
+                'proposal': result.proposal.model_dump(mode='json') if result.proposal else None,
+                'risk': result.risk.model_dump(mode='json') if result.risk else None}
+
+    @app.get('/runs/{run_id}/proposal')
+    def get_run_proposal(run_id: str) -> dict[str, object]:
+        return workflow().proposal_for(run_id).model_dump(mode='json')
+
+    @app.post('/runs/{run_id}/approve')
+    def approve_run(
+        run_id: str,
+        x_reviewer_id: str | None = Header(default=None, alias='X-Reviewer-Id'),
+    ) -> dict[str, object]:
+        order = workflow().approve(run_id, _reviewer(x_reviewer_id))
+        return {'run': dependencies.run_repository.get(run_id).model_dump(mode='json'),
+                'order': order.model_dump(mode='json')}
+
+    @app.post('/runs/{run_id}/reject')
+    def reject_run(
+        run_id: str, request: RejectRequest,
+        x_reviewer_id: str | None = Header(default=None, alias='X-Reviewer-Id'),
+    ) -> dict[str, object]:
+        return workflow().reject(run_id, _reviewer(x_reviewer_id), request.reason).model_dump(mode='json')
+
+    @app.post('/runs/{run_id}/reconcile')
+    def reconcile_run(
+        run_id: str,
+        x_reviewer_id: str | None = Header(default=None, alias='X-Reviewer-Id'),
+    ) -> dict[str, object]:
+        _reviewer(x_reviewer_id)
+        order = workflow().recover(run_id)
+        return {'run': dependencies.run_repository.get(run_id).model_dump(mode='json'),
+                'order': order.model_dump(mode='json') if order else None}
 
     return app

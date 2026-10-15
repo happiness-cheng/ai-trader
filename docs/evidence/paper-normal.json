@@ -1,0 +1,11 @@
+{
+  "mode": "offline_fixture_paper",
+  "network": false,
+  "live_execution": false,
+  "run_id": "run-6801cbfe-3a5f-49ba-8ce8-3110dde5ea39",
+  "state": "succeeded",
+  "orders": 1,
+  "recovered": false,
+  "duplicate_same_order": true,
+  "replay_source": "current runtime CLI; only local artifact_directory omitted"
+}

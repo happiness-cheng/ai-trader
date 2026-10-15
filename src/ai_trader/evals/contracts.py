@@ -10,6 +10,10 @@ class EvalModel(BaseModel):
 class ObservedToolCall(EvalModel):
     name: str = Field(min_length=1, max_length=128)
     arguments: dict[str, object]
+    ok: bool | None = None
+    error_code: str | None = None
+    elapsed_ms: float | None = Field(default=None, ge=0)
+    output_sha256: str | None = None
 
 
 class EvalScenario(EvalModel):
@@ -37,6 +41,7 @@ class EvalObservation(EvalModel):
     output_tokens: int = Field(default=0, ge=0)
     estimated_cost: float = Field(default=0, ge=0)
     latency_ms: float = Field(default=0, ge=0)
+    failure_reason: str | None = None
 
 
 class ScenarioScore(EvalModel):

@@ -19,27 +19,48 @@ PERSIST_DIR = os.path.join(config.DATA_DIR, 'chroma_db')
 class RagStore:
     """基于 ChromaDB 的向量知识库"""
 
-    def __init__(self, persist_dir=None):
-        if persist_dir is None:
-            persist_dir = PERSIST_DIR
-
-        os.makedirs(persist_dir, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=persist_dir)
+    def __init__(self, persist_dir=None, *, client=None, embedding_function=None):
+        if client is None:
+            if persist_dir is None:
+                persist_dir = PERSIST_DIR
+            os.makedirs(persist_dir, exist_ok=True)
+            client = chromadb.PersistentClient(path=persist_dir)
+        self.client = client
+        embedding_options = ({"embedding_function": embedding_function}
+                             if embedding_function is not None else {})
 
         # 使用 ChromaDB 内置默认 embedding（ONNX，无需 PyTorch）
         # 对中英文混合文本效果足够好
         self.decisions = self.client.get_or_create_collection(
             name="ai_decisions",
             metadata={"hnsw:space": "cosine"},
+            **embedding_options,
         )
         self.predictions = self.client.get_or_create_collection(
             name="predictions",
             metadata={"hnsw:space": "cosine"},
+            **embedding_options,
         )
         self.lessons = self.client.get_or_create_collection(
             name="lessons",
             metadata={"hnsw:space": "cosine"},
+            **embedding_options,
         )
+
+    def index_confirmed_memory(self, record_id, content, metadata):
+        """业务确认入口复用 lessons，不将模型建议索引成已确认事实。"""
+        self.lessons.upsert(ids=[record_id], documents=[content], metadatas=[metadata])
+
+    def get_memory_records(self, *, ids=None, where=None):
+        options = {"include": ["documents", "metadatas"]}
+        if ids is not None:
+            options["ids"] = ids
+        if where is not None:
+            options["where"] = where
+        rows = self.lessons.get(**options)
+        return [{"id": record_id, "collection": "lessons", "document": rows["documents"][i],
+                 "metadata": rows["metadatas"][i]}
+                for i, record_id in enumerate(rows["ids"])]
 
     # ========== 索引操作 ==========
 
@@ -99,7 +120,7 @@ class RagStore:
 
     # ========== 检索操作 ==========
 
-    def search(self, query, top_k=3, collections=None):
+    def search(self, query, top_k=3, collections=None, *, where=None, raise_on_error=False):
         """语义搜索
 
         Args:
@@ -125,15 +146,21 @@ class RagStore:
             if not coll or coll.count() == 0:
                 continue
             try:
-                res = coll.query(query_texts=[query], n_results=top_k)
+                options = {"query_texts": [query], "n_results": top_k}
+                if where is not None:
+                    options["where"] = where
+                res = coll.query(**options)
                 for i in range(len(res['ids'][0])):
                     results.append({
                         "collection": coll_name,
+                        "id": res['ids'][0][i],
                         "document": res['documents'][0][i],
                         "metadata": res['metadatas'][0][i],
                         "distance": res['distances'][0][i] if 'distances' in res else None,
                     })
             except Exception as e:
+                if raise_on_error:
+                    raise
                 logger.warning(f"RAG搜索失败 [{coll_name}]: {e}")
 
         # 按相似度排序（distance越小越相关）

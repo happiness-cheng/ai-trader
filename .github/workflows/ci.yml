@@ -12,18 +12,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[test]"
+        run: |
+          python -m pip install -e ".[test,mcp,memory]" -c constraints.verified-win-py312.txt
+          python -m pip install "setuptools>=75,<82" wheel
       - name: Build
         run: python -m compileall -q src tests config.py
       - name: Type check
         run: python -m mypy
       - name: Lint
-        run: python -m ruff check src tests
+        # 保留既有文件的导入顺序/noqa样式；新运行保护模块额外严格检查。
+        run: |
+          python -m ruff check src tests --extend-ignore I001,RUF100
+          python -m ruff check src/ai_trader/paper_service.py src/ai_trader/state_health.py src/ai_trader/state_backup.py
       - name: Tests
-        run: python -m pytest -W error::ResourceWarning --cov=ai_trader --cov-fail-under=85
+        run: |
+          python -m ai_trader.offline_tests --verify-isolation
+          python -m ai_trader.offline_tests -W error::ResourceWarning --cov=ai_trader --cov-fail-under=85
+      - name: Build and inspect wheel
+        run: |
+          python -m pip wheel . --no-deps --no-build-isolation --wheel-dir wheel-check
+          $wheel = Get-ChildItem -LiteralPath wheel-check -Filter '*.whl' | Select-Object -First 1
+          python scripts/check_wheel.py $wheel.FullName
       - name: Runtime dry-run
         run: python -m ai_trader.runtime --dry-run
       - name: Deterministic evals

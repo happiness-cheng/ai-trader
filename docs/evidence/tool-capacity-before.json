@@ -1,0 +1,8 @@
+{
+  "calls": 8,
+  "peak_inflight_handlers": 8,
+  "active_after_timeouts": 8,
+  "codes": ["timeout", "timeout", "timeout", "timeout", "timeout", "timeout", "timeout", "timeout"],
+  "elapsed_ms": 246.717,
+  "external_model_calls": 0
+}

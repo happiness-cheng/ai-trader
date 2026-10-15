@@ -1,0 +1,140 @@
+{
+  "policies": [
+    {
+      "scenario": "old_large_current_small",
+      "policy": "disabled",
+      "original_chars": 13765,
+      "max_input_chars": 2500,
+      "input_chars": null,
+      "omitted_rounds": null,
+      "compressed_results": null,
+      "risk_retained": "not sent",
+      "fixture_result": "input_chars",
+      "provider_calls": 0
+    },
+    {
+      "scenario": "old_large_current_small",
+      "policy": "mechanical",
+      "original_chars": 13765,
+      "max_input_chars": 2500,
+      "input_chars": 710,
+      "omitted_rounds": 1,
+      "compressed_results": 0,
+      "risk_retained": true,
+      "fixture_result": "fixed completion",
+      "provider_calls": 1
+    },
+    {
+      "scenario": "old_large_current_small",
+      "policy": "structured",
+      "original_chars": 13765,
+      "max_input_chars": 2500,
+      "input_chars": 1450,
+      "omitted_rounds": 0,
+      "compressed_results": 1,
+      "risk_retained": true,
+      "fixture_result": "fixed completion",
+      "provider_calls": 1
+    },
+    {
+      "scenario": "current_large_with_risk",
+      "policy": "disabled",
+      "original_chars": 17567,
+      "max_input_chars": 2500,
+      "input_chars": null,
+      "omitted_rounds": null,
+      "compressed_results": null,
+      "risk_retained": "not sent",
+      "fixture_result": "input_chars",
+      "provider_calls": 0
+    },
+    {
+      "scenario": "current_large_with_risk",
+      "policy": "mechanical",
+      "original_chars": 17567,
+      "max_input_chars": 2500,
+      "input_chars": null,
+      "omitted_rounds": null,
+      "compressed_results": null,
+      "risk_retained": "not sent",
+      "fixture_result": "input_chars",
+      "provider_calls": 0
+    },
+    {
+      "scenario": "current_large_with_risk",
+      "policy": "structured",
+      "original_chars": 17567,
+      "max_input_chars": 2500,
+      "input_chars": 1267,
+      "omitted_rounds": 0,
+      "compressed_results": 1,
+      "risk_retained": true,
+      "fixture_result": "fixed completion",
+      "provider_calls": 1
+    }
+  ],
+  "instructions": [
+    {
+      "task": "analyse",
+      "mode": "full",
+      "instruction_chars": 517,
+      "input_chars": 888,
+      "shared_constraint_retained": true,
+      "task_constraint_retained": true,
+      "server_constraint_retained": true
+    },
+    {
+      "task": "analyse",
+      "mode": "on_demand",
+      "instruction_chars": 399,
+      "input_chars": 768,
+      "shared_constraint_retained": true,
+      "task_constraint_retained": true,
+      "server_constraint_retained": true
+    },
+    {
+      "task": "review",
+      "mode": "full",
+      "instruction_chars": 517,
+      "input_chars": 888,
+      "shared_constraint_retained": true,
+      "task_constraint_retained": true,
+      "server_constraint_retained": true
+    },
+    {
+      "task": "review",
+      "mode": "on_demand",
+      "instruction_chars": 234,
+      "input_chars": 557,
+      "shared_constraint_retained": true,
+      "task_constraint_retained": true,
+      "server_constraint_retained": true
+    }
+  ],
+  "synthetic_schemas": [
+    {
+      "task": "analyse",
+      "mode": "all",
+      "schema_count": 3,
+      "input_chars": 1352
+    },
+    {
+      "task": "analyse",
+      "mode": "manual_candidate",
+      "schema_count": 2,
+      "input_chars": 1149
+    },
+    {
+      "task": "review",
+      "mode": "all",
+      "schema_count": 3,
+      "input_chars": 1141
+    },
+    {
+      "task": "review",
+      "mode": "manual_candidate",
+      "schema_count": 2,
+      "input_chars": 952
+    }
+  ]
+}

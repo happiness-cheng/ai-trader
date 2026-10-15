@@ -1,6 +1,6 @@
 """使用官方 Anthropic Python SDK 的 Messages Provider。"""
 
-from typing import cast
+from typing import TypedDict, cast
 
 import anthropic
 from anthropic.types import MessageParam, ToolParam
@@ -14,6 +14,10 @@ from ai_trader.models.gateway import (
     ProviderErrorCode,
 )
 from ai_trader.settings import Settings
+
+
+class _SystemOptions(TypedDict, total=False):
+    system: str
 
 
 class AnthropicProvider:
@@ -41,6 +45,7 @@ class AnthropicProvider:
             }
             for schema in sorted(request.tools, key=lambda item: str(item["name"]))
         ]
+        system_options: _SystemOptions = {'system': request.system} if request.system else {}
         try:
             response = self._client.messages.create(
                 model=request.model,
@@ -48,6 +53,7 @@ class AnthropicProvider:
                 messages=cast(list[MessageParam], list(request.messages)),
                 tools=cast(list[ToolParam], tools),
                 cache_control={"type": "ephemeral"},
+                **system_options,
             )
         except anthropic.AuthenticationError as exc:
             raise ProviderError(

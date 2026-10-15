@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from ai_trader.domain.trading import Order, RiskDecision, RiskOutcome
 from ai_trader.execution.base import BrokerAdapter
+from ai_trader.execution.paper import PaperBrokerAdapter
 from ai_trader.persistence.trading import (
     ApprovalRecord,
     DuplicateReservation,
@@ -16,7 +17,9 @@ from ai_trader.risk.gate import RiskContext, RiskGate
 
 
 class ExecutionUnknown(RuntimeError):
-    pass
+    def __init__(self, message: str, *, uncertain: bool = False) -> None:
+        super().__init__(message)
+        self.uncertain = uncertain
 
 
 class ExecutionCoordinator:
@@ -34,6 +37,10 @@ class ExecutionCoordinator:
         self._risk_gate = risk_gate or RiskGate()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._id_factory = id_factory or (lambda prefix: f"{prefix}-{uuid4()}")
+
+    @property
+    def paper_only(self) -> bool:
+        return isinstance(self._broker, PaperBrokerAdapter)
 
     def submit_proposal(self, context: RiskContext) -> RiskDecision:
         self._repository.save_proposal(context.proposal)
@@ -92,7 +99,7 @@ class ExecutionCoordinator:
             existing = self._repository.get_order_by_proposal(proposal.proposal_id)
             if existing is not None:
                 return existing
-            raise ExecutionUnknown("execution is already reserved or unknown") from exc
+            raise ExecutionUnknown("execution is already reserved or unknown", uncertain=True) from exc
 
         decision = RiskDecision(
             proposal_id=proposal.proposal_id,
@@ -104,8 +111,10 @@ class ExecutionCoordinator:
             order = self._broker.submit(proposal, decision)
             self._repository.save_order(order)
             return order
-        except Exception:
+        except Exception as exc:
             self._repository.mark_execution_unknown(proposal.proposal_id)
+            if isinstance(exc, ExecutionUnknown):
+                raise ExecutionUnknown(str(exc), uncertain=True) from exc
             raise
 
     def approve_and_execute(

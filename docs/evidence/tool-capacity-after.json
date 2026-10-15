@@ -1,0 +1,18 @@
+{
+  "calls": 8,
+  "peak_inflight_handlers": 4,
+  "active_after_timeouts": 4,
+  "codes": [
+    "timeout",
+    "timeout",
+    "timeout",
+    "timeout",
+    "capacity_unavailable",
+    "capacity_unavailable",
+    "capacity_unavailable",
+    "capacity_unavailable"
+  ],
+  "elapsed_ms": 120.372,
+  "external_model_calls": 0,
+  "pass": true
+}

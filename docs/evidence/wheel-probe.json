@@ -1,0 +1,19 @@
+{
+  "runtime_imported_from_wheel": true,
+  "wheel_sha256": "e64c0615883babf960dda46a5a21e879e82d4888bc593c1665fd01aa435a31e5",
+  "dependencies": "installed verification environment",
+  "live_execution": false,
+  "normal": {
+    "state": "succeeded",
+    "orders": 1,
+    "recovered": false,
+    "duplicate_same_order": true
+  },
+  "response_loss": {
+    "state": "succeeded",
+    "orders": 1,
+    "recovered": true,
+    "duplicate_same_order": true
+  },
+  "pass": true
+}

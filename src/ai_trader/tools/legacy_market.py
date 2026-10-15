@@ -4,7 +4,7 @@ from collections.abc import Callable
 from importlib import import_module
 from typing import Any, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_trader.tools.runtime import ToolDefinition, ToolEffect, ToolRisk, ToolRuntime
 
@@ -18,6 +18,7 @@ class _StockInput(BaseModel):
 
 
 class _RagInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=500)
     top_k: int = Field(default=3, ge=1, le=10)
 
@@ -31,7 +32,8 @@ class _ListOutput(BaseModel):
 
 
 def create_legacy_market_runtime(
-    *, module_loader: Callable[[str], object] = import_module
+    *, module_loader: Callable[[str], object] = import_module,
+    memory_reader: Callable[..., list[dict[str, object]]] | None = None,
 ) -> ToolRuntime:
     runtime = ToolRuntime()
 
@@ -53,8 +55,9 @@ def create_legacy_market_runtime(
         return _ListOutput(data=[dict(item) for item in module.get_local_positions()])
 
     def rag_search(data: _RagInput) -> _ListOutput:
-        module = cast(Any, module_loader("rag_store"))
-        results = module.get_store().search(data.query, top_k=data.top_k)
+        if memory_reader is None:
+            raise RuntimeError("a server-bound controlled memory reader is required")
+        results = memory_reader(data.query, top_k=data.top_k)
         return _ListOutput(data=[dict(item) for item in results])
 
     definitions: tuple[Any, ...] = (
@@ -79,7 +82,7 @@ def create_legacy_market_runtime(
             permission="portfolio:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),
         ToolDefinition(
-            name="rag_search", description="当需要检索已验证的历史经验的时候使用",
+            name="rag_search", description="检索已确认的历史经验与偏好；不能覆盖风控或审批",
             input_model=_RagInput, output_model=_ListOutput, handler=rag_search,
             permission="memory:read", risk=ToolRisk.LOW, effect=ToolEffect.READ,
         ),

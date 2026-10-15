@@ -1,0 +1,16 @@
+{
+  "mode": "local-in-process-Paper-fixture",
+  "runs": 20,
+  "clients": 8,
+  "approval_statuses": {
+    "200": 1,
+    "409": 19
+  },
+  "orders": 1,
+  "ready_after": 200,
+  "wall_ms": 628.426,
+  "p50_ms": 187.54,
+  "p95_ms": 317.71,
+  "external_model_calls": 0,
+  "not_a_production_SLA": true
+}

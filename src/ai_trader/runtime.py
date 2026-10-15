@@ -1,10 +1,12 @@
 """新生产 Runtime 的显式启用入口；旧版默认保持不变。"""
 
 import argparse
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -113,18 +115,49 @@ def run_dry() -> int:
     return 0
 
 
-def build_production_runner(settings: Settings) -> tuple[ProductionAgentRunner, SqlRunRepository]:
+def _scoped_memory_reader(owner: str) -> Callable[..., list[dict[str, object]]]:
+    # 延迟打开现有store；身份由可信本机入口绑定，模型不能选择其他owner。
+    from importlib import import_module
+
+    from ai_trader.memory.lifecycle import ControlledMemory
+
+    memory: ControlledMemory | None = None
+
+    def read(query: str, top_k: int = 3) -> list[dict[str, object]]:
+        nonlocal memory
+        if memory is None:
+            legacy = cast(Any, import_module('rag_store'))
+            memory = ControlledMemory(
+                legacy.get_store(), user_id=owner, permissions=frozenset({'memory:read'}),
+                clock=lambda: datetime.now(UTC),
+            )
+        return memory.search(query, top_k=top_k)
+
+    return read
+
+
+def build_production_runner(
+    settings: Settings, *, memory_owner: str | None = None,
+    memory_reader: Callable[..., list[dict[str, object]]] | None = None,
+) -> tuple[ProductionAgentRunner, SqlRunRepository]:
     if settings.runtime_mode != "production":
         raise RuntimeError("AI_TRADER_RUNTIME_MODE=production is required")
     if not settings.anthropic_api_key:
         raise RuntimeError("Anthropic API credential is required")
+    if memory_reader is not None and memory_owner is None:
+        raise ValueError('memory reader requires an explicitly bound owner')
+    if memory_owner is not None and (not memory_owner.strip() or len(memory_owner) > 128):
+        raise ValueError('memory owner must be nonempty')
+    if memory_owner is not None and memory_reader is None:
+        memory_reader = _scoped_memory_reader(memory_owner)
     repository = SqlRunRepository(settings.runtime_database_url)
     runner = ProductionAgentRunner(
         ModelGateway([AnthropicProvider.from_settings(settings)]),
-        create_legacy_market_runtime(),
+        create_legacy_market_runtime(memory_reader=memory_reader),
         PersistentOrchestrator(repository),
         ToolExecutionContext(
-            permissions=frozenset({"market:read", "portfolio:read", "memory:read"})
+            permissions=frozenset({"market:read", "portfolio:read"})
+            | (frozenset({'memory:read'}) if memory_owner is not None else frozenset()),
         ),
         model=settings.anthropic_model,
     )
@@ -137,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke-online", action="store_true")
     parser.add_argument("--allow-network", action="store_true")
     parser.add_argument("--goal", default="分析当前市场环境")
+    parser.add_argument('--memory-owner', help='由可信本机调用方指定的记忆命名空间，不代表多用户鉴权')
     args = parser.parse_args(argv)
     if args.dry_run:
         return run_dry()
@@ -150,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     if settings.runtime_mode != "production":
         print("runtime_mode=legacy (set AI_TRADER_RUNTIME_MODE=production to opt in)")
         return 0
-    runner, repository = build_production_runner(settings)
+    runner, repository = build_production_runner(settings, memory_owner=args.memory_owner)
     try:
         result = runner.run(args.goal)
         print(result.final_text)
